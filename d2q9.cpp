@@ -78,9 +78,6 @@ std::unique_ptr<T[]> make_unique_arr(size_t N)
 	return std::unique_ptr<T[]>(new T[N]);
 }
 
-#define Nx 401
-#define Ny 401
-
 int main(int argc, char* argv[])
 {
 	// redirect vtk messages to a file
@@ -89,16 +86,20 @@ int main(int argc, char* argv[])
 	vtkout->SetFileName("vtk_output.txt");
 
 	// params - hard coded for now
-	double dx = 0.005;
+	double L = 1.0;
+	double dx = 0.004;
 	double dt = 0.02;
 	double rho0 = 1000.;
 	double nu = 0.001/rho0;
 
+	int Nx = L / dx + 1;
+	int Ny = L / dx + 1;
 	double c = dx / dt;
 	double tau = 3. * nu*(1. /(c* dx)) + 0.5;
 
 	cout << "C = " << c << endl;
 	cout << "Tau = " << tau << endl;
+	cout << "N = (" << Nx << ", " << Ny << ")" << endl;
 
 	// allocate memory
 	auto f = make_unique_arr<array<double, 9>>(Nx*Ny);
@@ -108,21 +109,23 @@ int main(int argc, char* argv[])
 	auto rho = make_unique_arr<double>(Nx*Nx);
 
 	// initialize tracers
-	int num_tracers = 1000;
+	int num_tracers = 1E4;
 	auto posx = make_unique_arr<double>(num_tracers);
 	auto posy = make_unique_arr<double>(num_tracers);
 	auto velx = make_unique_arr<double>(num_tracers);
 	auto vely = make_unique_arr<double>(num_tracers);
+	auto ids = make_unique_arr<int>(num_tracers);
 
 	mt19937_64 rng(42);
-	uniform_real_distribution<double> dist_x(0.0, Nx*dx);
-	uniform_real_distribution<double> dist_y(0.0, Ny*dx);
+	uniform_real_distribution<double> dist_x(0.0, L);
+	uniform_real_distribution<double> dist_y(0.0, L);
 
 	for (int i = 0; i < num_tracers; ++i)
 	{
 		posx[i] = dist_x(rng);
 		posy[i] = dist_y(rng);
 		velx[i] = vely[i] = 0.0;
+		ids[i] = sub2idx(posy[i] / dx, posx[i] / dx, Ny, Nx); // i/j deliberately swapped here
 	}
 
 	// initialize f
@@ -130,21 +133,9 @@ int main(int argc, char* argv[])
 	for (int j = 0; j < Ny; ++j)
 	{
 		double vx_, vy_;
-		vy_ = vx_ = 0.0;
-		
-		double vx__, vy__;
-		get_vortex(200 * dx, 110 * dx, i*dx, j*dx, 10,0, 0.001*c, 0.066, false, Nx*dx, Ny*dx, vx__, vy__);
-		vx_ += vx__;
-		vy_ += vy__;
-		get_vortex(200 * dx, 90 * dx, i*dx, j*dx, 10, 0, 0.001*c, 0.066, true, Nx*dx, Ny*dx, vx__, vy__);
-		vx_ += vx__;
-		vy_ += vy__;
-		get_vortex(400 * dx, 110 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, true, Nx*dx, Ny*dx, vx__, vy__);
-		vx_ += vx__;
-		vy_ += vy__;
-		get_vortex(400 * dx, 90 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, false, Nx*dx, Ny*dx, vx__, vy__);
-		vx_ += vx__;
-		vy_ += vy__;
+
+		vx_ = 0.05*c*cos((j*dx / L - L*0.75)*M_PI*2.);
+		vy_ = 0.05*c*cos((i*dx / L - L*0.25)*M_PI*2.);
 
 		int idx = sub2idx(i, j, Nx, Ny);
 		for (int q = 0; q < 9; ++q)
@@ -157,7 +148,7 @@ int main(int argc, char* argv[])
 		rho[idx] = rho0;
 	}
 
-	int fact = 50;
+	int fact = 25;
 	for (int iteration = 0; iteration < fact*1000; ++iteration)
 	{
 		// write out data files
@@ -186,7 +177,7 @@ int main(int argc, char* argv[])
 				vel_arr->SetNumberOfTuples(Nx*Ny);
 
 				vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				curl_arr->SetName("Curl");
+				curl_arr->SetName("Vorticity");
 				curl_arr->SetNumberOfComponents(1);
 				curl_arr->SetNumberOfTuples(Nx*Ny);
 
@@ -234,10 +225,16 @@ int main(int argc, char* argv[])
 				vel_arr->SetNumberOfComponents(3);
 				vel_arr->SetNumberOfTuples(num_tracers);
 
+				vtkSmartPointer<vtkDoubleArray> id_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				id_arr->SetName("Id");
+				id_arr->SetNumberOfComponents(1);
+				id_arr->SetNumberOfTuples(num_tracers);
+
 				for (int i = 0; i < num_tracers; ++i)
 				{
 					points->InsertNextPoint(posx[i], posy[i], 0.0);
 					vel_arr->SetTuple3(i, velx[i], vely[i], 0.0);
+					id_arr->SetTuple1(i, ids[i]);
 					vtkIdType id[1] = { i };
 					vertices->InsertNextCell(1, id);
 				}
@@ -247,6 +244,7 @@ int main(int argc, char* argv[])
 				polydata->SetPoints(points);
 				polydata->SetVerts(vertices);
 				polydata->GetPointData()->AddArray(vel_arr);
+				polydata->GetPointData()->AddArray(id_arr);
 
 				vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
 				writer->SetFileName(fname.str().c_str());
@@ -259,9 +257,9 @@ int main(int argc, char* argv[])
 				}
 			}
 
-			cout << "itration " << iteration << "\tt = " << iteration *dt << " s" << endl;
+			cout << "iteration " << iteration << "\tt = " << iteration *dt << " s" << endl;
 		}
-
+	
 		// stream - use feq as temporary storage
 		for (int i = 0; i < Nx; ++i)
 		for (int j = 0; j < Ny; ++j)
@@ -327,8 +325,8 @@ int main(int argc, char* argv[])
 			vy1 = bilinear_interp(posx[i], posy[i], xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
 			
 			// initial guess
-			double posx1 = periodic(posx[i] + dt*vx1, Nx*dx);
-			double posy1 = periodic(posy[i] + dt*vy1, Ny*dx);
+			double posx1 = periodic(posx[i] + dt*vx1, L);
+			double posy1 = periodic(posy[i] + dt*vy1, L);
 
 			// could have moved out of the grid cell => recalculate idxs
 			xidx = (int)(posx1 / dx);
@@ -342,8 +340,8 @@ int main(int argc, char* argv[])
 			vy2 = bilinear_interp(posx1, posy1, xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
 
 			// corrector step
-			posx[i] = periodic(posx[i] + 0.5*dt*(vx1 + vx2), Nx*dx);
-			posy[i] = periodic(posy[i] + 0.5*dt*(vy1 + vy2), Ny*dx);
+			posx[i] = periodic(posx[i] + 0.5*dt*(vx1 + vx2), L);
+			posy[i] = periodic(posy[i] + 0.5*dt*(vy1 + vy2), L);
 
 			// strictly should be recalculated at the new position but this is for visualization only
 			velx[i] = vx2; 
