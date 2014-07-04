@@ -12,6 +12,7 @@
 #include <vtkDoubleArray.h>
 #include <vtkImageData.h>
 #include <vtkPointData.h>
+#include <vtkCellArray.h>
 #include <vtkPolyData.h>
 #include <vtkIdList.h>
 #include <vtkZLibDataCompressor.h>
@@ -46,11 +47,13 @@ double get_feq(double vx, double vy, double rho, double c, int q)
 	return Ws[q] * rho*(1.0 + s);
 }
 
-void get_vortex(double x0, double y0, double x, double y, double vx, double vy, double vmax, double sigma, bool clockwise, double &vxout, double& vyout)
+void get_vortex(double x0, double y0, double x, double y, double vx, double vy, double vmax, double sigma, bool clockwise, double Lx, double Ly, double &vxout, double& vyout)
 {
-	double r = sqrt((x0 - x)*(x0 - x) + (y0 - y)*(y0 - y));
+	double dxp = periodic(x - x0 + Lx / 2., Lx) - Lx / 2.;
+	double dyp = periodic(y - y0 + Ly / 2., Ly) - Ly / 2.;
+	double r = sqrt(dxp*dxp + dyp*dyp);
 	double v = (2 * r / (sigma*sigma))*exp(-r*r/(sigma*sigma));
-	double theta = atan2(y - y0, x - x0);
+	double theta = atan2(dyp, dxp);
 
 	vxout = +vmax*v*sin(theta)*(clockwise ? 1 : -1) + 2*exp(-r*r/(sigma*sigma))*vmax*vx;
 	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2*exp(-r*r / (sigma*sigma))*vmax*vy;
@@ -108,6 +111,8 @@ int main(int argc, char* argv[])
 	int num_tracers = 1000;
 	auto posx = make_unique_arr<double>(num_tracers);
 	auto posy = make_unique_arr<double>(num_tracers);
+	auto velx = make_unique_arr<double>(num_tracers);
+	auto vely = make_unique_arr<double>(num_tracers);
 
 	mt19937_64 rng(42);
 	uniform_real_distribution<double> dist_x(0.0, Nx*dx);
@@ -117,6 +122,7 @@ int main(int argc, char* argv[])
 	{
 		posx[i] = dist_x(rng);
 		posy[i] = dist_y(rng);
+		velx[i] = vely[i] = 0.0;
 	}
 
 	// initialize f
@@ -127,16 +133,16 @@ int main(int argc, char* argv[])
 		vy_ = vx_ = 0.0;
 		
 		double vx__, vy__;
-		get_vortex(100 * dx, 210 * dx, i*dx, j*dx, 10,0, 0.001*c, 0.066, false, vx__, vy__);
+		get_vortex(200 * dx, 110 * dx, i*dx, j*dx, 10,0, 0.001*c, 0.066, false, Nx*dx, Ny*dx, vx__, vy__);
 		vx_ += vx__;
 		vy_ += vy__;
-		get_vortex(100 * dx, 190 * dx, i*dx, j*dx, 10,0, 0.001*c, 0.066, true, vx__, vy__);
+		get_vortex(200 * dx, 90 * dx, i*dx, j*dx, 10, 0, 0.001*c, 0.066, true, Nx*dx, Ny*dx, vx__, vy__);
 		vx_ += vx__;
 		vy_ += vy__;
-		get_vortex(300 * dx, 210 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, true, vx__, vy__);
+		get_vortex(400 * dx, 110 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, true, Nx*dx, Ny*dx, vx__, vy__);
 		vx_ += vx__;
 		vy_ += vy__;
-		get_vortex(300 * dx, 190 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, false, vx__, vy__);
+		get_vortex(400 * dx, 90 * dx, i*dx, j*dx, -10, 0, 0.001*c, 0.066, false, Nx*dx, Ny*dx, vx__, vy__);
 		vx_ += vx__;
 		vy_ += vy__;
 
@@ -159,87 +165,98 @@ int main(int argc, char* argv[])
 		{
 			stringstream fname;
 			fname << "./out/output_" << setw(6) << setfill('0') << iteration / fact << ".vti";
-			
-			// setup arrays and vtkImageData objects
-			vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
-			data->SetExtent(0, Nx-1, 0, Ny-1, 0, 0);
-			data->SetSpacing(dx, dx, 0);
-			data->SetOrigin(0, 0, 0);
-
-			vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
-			rho_arr->SetName("Density");
-			rho_arr->SetNumberOfComponents(1);
-			rho_arr->SetNumberOfTuples(Nx*Ny);
-
-			vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
-			vel_arr->SetName("Velocity");
-			vel_arr->SetNumberOfComponents(3);
-			vel_arr->SetNumberOfTuples(Nx*Ny);
-
-			vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
-			curl_arr->SetName("Curl");
-			curl_arr->SetNumberOfComponents(1);
-			curl_arr->SetNumberOfTuples(Nx*Ny);
-
-			vtkPointData* pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
-			pdata->AddArray(vel_arr);
-			pdata->AddArray(rho_arr);
-			pdata->AddArray(curl_arr);
-
-			for (int i = 0; i < Nx;++i)
-			for (int j = 0; j < Ny; ++j)
-			{
-				int idx = sub2idx(i, j, Nx, Ny);
-
-				double curl = (vy[sub2idx(periodic(i + 1, Nx), j, Nx, Ny)] - vy[sub2idx(periodic(i - 1, Nx), j, Nx, Ny)]) - (vx[sub2idx(i, periodic(j + 1, Ny), Nx, Ny)] - vx[sub2idx(i, periodic(j - 1, Ny), Nx, Ny)]);
-				curl /= (2 * dx);
-
-				vel_arr->SetTuple3(idx, vx[idx], vy[idx], 0.0);
-				rho_arr->SetTuple1(idx, rho[idx]);
-				curl_arr->SetTuple1(idx, curl);
-			}
 
 			vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
-			vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
 
-			writer->SetDataModeToBinary();
-			writer->SetFileName(fname.str().c_str());
-			writer->SetInputData(data);
-			writer->SetCompressor(compressor);
-
-			if (!writer->Write())
 			{
-				throw runtime_error("Error writing imagedata to vtk file!");
+				// setup arrays and vtkImageData objects
+				vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
+				data->SetExtent(0, Nx - 1, 0, Ny - 1, 0, 0);
+				data->SetSpacing(dx, dx, 0);
+				data->SetOrigin(0, 0, 0);
+
+				vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				rho_arr->SetName("Density");
+				rho_arr->SetNumberOfComponents(1);
+				rho_arr->SetNumberOfTuples(Nx*Ny);
+
+				vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				vel_arr->SetName("Velocity");
+				vel_arr->SetNumberOfComponents(3);
+				vel_arr->SetNumberOfTuples(Nx*Ny);
+
+				vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				curl_arr->SetName("Curl");
+				curl_arr->SetNumberOfComponents(1);
+				curl_arr->SetNumberOfTuples(Nx*Ny);
+
+				vtkPointData* pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
+				pdata->AddArray(vel_arr);
+				pdata->AddArray(rho_arr);
+				pdata->AddArray(curl_arr);
+
+				for (int i = 0; i < Nx; ++i)
+				for (int j = 0; j < Ny; ++j)
+				{
+					int idx = sub2idx(i, j, Nx, Ny);
+
+					double curl = (vy[sub2idx(periodic(i + 1, Nx), j, Nx, Ny)] - vy[sub2idx(periodic(i - 1, Nx), j, Nx, Ny)]) - (vx[sub2idx(i, periodic(j + 1, Ny), Nx, Ny)] - vx[sub2idx(i, periodic(j - 1, Ny), Nx, Ny)]);
+					curl /= (2 * dx);
+
+					vel_arr->SetTuple3(idx, vx[idx], vy[idx], 0.0);
+					rho_arr->SetTuple1(idx, rho[idx]);
+					curl_arr->SetTuple1(idx, curl);
+				}
+
+				vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
+
+				writer->SetDataModeToBinary();
+				writer->SetFileName(fname.str().c_str());
+				writer->SetInputData(data);
+				writer->SetCompressor(compressor);
+
+				if (!writer->Write())
+				{
+					throw runtime_error("Error writing imagedata to vtk file!");
+				}
 			}
 
 			fname.str("");
 			fname.clear();
 			fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
 
-			vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
-			vtkSmartPointer<vtkIdList> ids = vtkSmartPointer<vtkIdList>::New();
-			
-			for (int i = 0; i < num_tracers; ++i)
 			{
-				points->InsertNextPoint(posx[i], posy[i], 0.0);
-				ids->InsertNextId(i);
-			}
+				vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+				vtkSmartPointer<vtkCellArray> vertices = vtkSmartPointer<vtkCellArray>::New();
 
-			vtkSmartPointer<vtkPolyData> polydata =	vtkSmartPointer<vtkPolyData>::New();
-			polydata->Allocate(num_tracers);
-			polydata->SetPoints(points);
-			polydata->Modified();
-			polydata->Allocate(num_tracers);
-			polydata->InsertNextCell(VTK_POLY_VERTEX, ids);
+				vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				vel_arr->SetName("Velocity");
+				vel_arr->SetNumberOfComponents(3);
+				vel_arr->SetNumberOfTuples(num_tracers);
 
-			vtkSmartPointer<vtkXMLPolyDataWriter> writer2 = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-			writer2->SetFileName(fname.str().c_str());
-			writer2->SetInputData(polydata);
-			writer2->SetCompressor(compressor);
-			
-			if (!writer2->Write())
-			{
-				throw runtime_error("Error writing tracers to vtk file!");
+				for (int i = 0; i < num_tracers; ++i)
+				{
+					points->InsertNextPoint(posx[i], posy[i], 0.0);
+					vel_arr->SetTuple3(i, velx[i], vely[i], 0.0);
+					vtkIdType id[1] = { i };
+					vertices->InsertNextCell(1, id);
+				}
+
+				vtkSmartPointer<vtkPolyData> polydata = vtkSmartPointer<vtkPolyData>::New();
+				polydata->Allocate(num_tracers);
+				polydata->SetPoints(points);
+				polydata->SetVerts(vertices);
+				polydata->GetPointData()->AddArray(vel_arr);
+
+				vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+				writer->SetFileName(fname.str().c_str());
+				writer->SetInputData(polydata);
+				writer->SetCompressor(compressor);
+
+				if (!writer->Write())
+				{
+					throw runtime_error("Error writing tracers to vtk file!");
+				}
 			}
 
 			cout << "itration " << iteration << "\tt = " << iteration *dt << " s" << endl;
@@ -327,6 +344,10 @@ int main(int argc, char* argv[])
 			// corrector step
 			posx[i] = periodic(posx[i] + 0.5*dt*(vx1 + vx2), Nx*dx);
 			posy[i] = periodic(posy[i] + 0.5*dt*(vy1 + vy2), Ny*dx);
+
+			// strictly should be recalculated at the new position but this is for visualization only
+			velx[i] = vx2; 
+			vely[i] = vy2;
 		}
 	}
 
