@@ -1,7 +1,9 @@
 #include <iostream>
+#include <random>
 #include <fstream>
 #include <sstream>
 #include <array>
+#include <memory>
 #include <iomanip>
 #include <cmath>
 
@@ -10,8 +12,11 @@
 #include <vtkDoubleArray.h>
 #include <vtkImageData.h>
 #include <vtkPointData.h>
+#include <vtkPolyData.h>
+#include <vtkIdList.h>
 #include <vtkZLibDataCompressor.h>
 #include <vtkXMLImageDataWriter.h>
+#include <vtkXMLPolyDataWriter.h>
 
 using namespace std;
 
@@ -19,9 +24,10 @@ using namespace std;
 const int qs[9][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 }, { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } };
 const double Ws[9] = { 4. / 9., 1. / 9., 1. / 9., 1. / 9., 1. / 9., 1. / 36., 1. / 36., 1. / 36., 1. / 36. };
 
-
-int periodic(int idx, int period)
+template<class T>
+T periodic(T idx, T period)
 {
+	//static_assert(std::is_unsigned<T>::value, "Attempting to use periodic clamp with unsigned type!");
 	if (idx < 0) idx += period;
 	else if (idx >= period) idx -= period;
 	return idx;
@@ -50,6 +56,25 @@ void get_vortex(double x0, double y0, double x, double y, double vx, double vy, 
 	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2*exp(-r*r / (sigma*sigma))*vmax*vy;
 }
 
+double bilinear_interp(double x, double y, double x0, double y0, double dx, double f00, double f10, double f01, double f11)
+{
+	double x_ = (x - x0) / dx;
+	double y_ = (y - y0) / dx;
+	double b1 = f00;
+	double b2 = f10 - f00;
+	double b3 = f01 - f00;
+	double b4 = f00 - f10 - f01 + f11;
+	double out = b1 + b2*x_ + b3*y_ + b4*x_*y_;
+
+	return out;
+}
+
+template<typename T>
+std::unique_ptr<T[]> make_unique_arr(size_t N)
+{
+	return std::unique_ptr<T[]>(new T[N]);
+}
+
 #define Nx 401
 #define Ny 401
 
@@ -73,11 +98,26 @@ int main(int argc, char* argv[])
 	cout << "Tau = " << tau << endl;
 
 	// allocate memory
-	array<double, 9>* f   = new array<double,9>[Nx*Ny];
-	array<double, 9>* feq = new array<double, 9>[Nx*Ny];
-	double* vx = new double[Nx*Ny];
-	double* vy = new double[Nx*Ny];
-	double* rho = new double[Nx*Ny];
+	auto f = make_unique_arr<array<double, 9>>(Nx*Ny);
+	auto feq = make_unique_arr<array<double, 9>>(Nx*Ny);
+	auto vx = make_unique_arr<double>(Nx*Nx);
+	auto vy = make_unique_arr<double>(Nx*Nx);
+	auto rho = make_unique_arr<double>(Nx*Nx);
+
+	// initialize tracers
+	int num_tracers = 1000;
+	auto posx = make_unique_arr<double>(num_tracers);
+	auto posy = make_unique_arr<double>(num_tracers);
+
+	mt19937_64 rng(42);
+	uniform_real_distribution<double> dist_x(0.0, Nx*dx);
+	uniform_real_distribution<double> dist_y(0.0, Ny*dx);
+
+	for (int i = 0; i < num_tracers; ++i)
+	{
+		posx[i] = dist_x(rng);
+		posy[i] = dist_y(rng);
+	}
 
 	// initialize f
 	for (int i = 0; i < Nx;++i)
@@ -114,7 +154,7 @@ int main(int argc, char* argv[])
 	int fact = 50;
 	for (int iteration = 0; iteration < fact*1000; ++iteration)
 	{
-		// write out velocities
+		// write out data files
 		if (iteration % fact == 0)
 		{
 			stringstream fname;
@@ -172,7 +212,37 @@ int main(int argc, char* argv[])
 				throw runtime_error("Error writing imagedata to vtk file!");
 			}
 
-			cout << iteration << endl;
+			fname.str("");
+			fname.clear();
+			fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
+
+			vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+			vtkSmartPointer<vtkIdList> ids = vtkSmartPointer<vtkIdList>::New();
+			
+			for (int i = 0; i < num_tracers; ++i)
+			{
+				points->InsertNextPoint(posx[i], posy[i], 0.0);
+				ids->InsertNextId(i);
+			}
+
+			vtkSmartPointer<vtkPolyData> polydata =	vtkSmartPointer<vtkPolyData>::New();
+			polydata->Allocate(num_tracers);
+			polydata->SetPoints(points);
+			polydata->Modified();
+			polydata->Allocate(num_tracers);
+			polydata->InsertNextCell(VTK_POLY_VERTEX, ids);
+
+			vtkSmartPointer<vtkXMLPolyDataWriter> writer2 = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+			writer2->SetFileName(fname.str().c_str());
+			writer2->SetInputData(polydata);
+			writer2->SetCompressor(compressor);
+			
+			if (!writer2->Write())
+			{
+				throw runtime_error("Error writing tracers to vtk file!");
+			}
+
+			cout << "itration " << iteration << "\tt = " << iteration *dt << " s" << endl;
 		}
 
 		// stream - use feq as temporary storage
@@ -223,6 +293,40 @@ int main(int argc, char* argv[])
 
 				f[sub2idx(i,j,Nx,Ny)][q] = f[sub2idx(i,j,Nx,Ny)][q] - (1. / tau)*(f[sub2idx(i,j,Nx,Ny)][q] - feq[sub2idx(i,j,Nx,Ny)][q]);
 			}
+		}
+
+		// advect tracers using improved Euler method
+		for (int i = 0; i < num_tracers; ++i)
+		{
+			int xidx = (int)(posx[i] / dx);
+			int yidx = (int)(posy[i] / dx);
+			int idx00 = sub2idx(xidx, yidx, Nx, Ny);
+			int idx10 = sub2idx(xidx+1, yidx, Nx, Ny);
+			int idx01 = sub2idx(xidx, yidx+1, Nx, Ny);
+			int idx11 = sub2idx(xidx+1, yidx+1, Nx, Ny);
+
+			double vx1, vx2, vy1, vy2;
+			vx1 = bilinear_interp(posx[i], posy[i], xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
+			vy1 = bilinear_interp(posx[i], posy[i], xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
+			
+			// initial guess
+			double posx1 = periodic(posx[i] + dt*vx1, Nx*dx);
+			double posy1 = periodic(posy[i] + dt*vy1, Ny*dx);
+
+			// could have moved out of the grid cell => recalculate idxs
+			xidx = (int)(posx1 / dx);
+			yidx = (int)(posy1 / dx);
+			idx00 = sub2idx(xidx, yidx, Nx, Ny);
+			idx10 = sub2idx(xidx + 1, yidx, Nx, Ny);
+			idx01 = sub2idx(xidx, yidx + 1, Nx, Ny);
+			idx11 = sub2idx(xidx + 1, yidx + 1, Nx, Ny);
+
+			vx2 = bilinear_interp(posx1, posy1, xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
+			vy2 = bilinear_interp(posx1, posy1, xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
+
+			// corrector step
+			posx[i] = periodic(posx[i] + 0.5*dt*(vx1 + vx2), Nx*dx);
+			posy[i] = periodic(posy[i] + 0.5*dt*(vy1 + vy2), Ny*dx);
 		}
 	}
 
