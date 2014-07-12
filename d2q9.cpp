@@ -58,7 +58,7 @@ int run_main(int argc, char* argv[])
 
 	// params - hard coded for now
 	double dx = 0.0001;
-	double dt = 0.0001;
+	double dt = 0.00005;
 	double dtout = 0.001;
 	double rho0 = 1000.;
 	double nu = 0.01/rho0;
@@ -66,12 +66,12 @@ int run_main(int argc, char* argv[])
 	double gy = 0.0;
 	double perturbation = 0.5; // in percent
 
-	int Nx = 300;
+	int Nx = 500;
 	int Ny = 300;
 	double c = dx / dt;
 	double tau = 3. * nu*(1. /(c* dx)) + 0.5;
 
-	string fname = "domain2.raw";
+	string fname = "domain4.raw";
 	unique_ptr<CellType[]> cell_type;
 	read_raw<unsigned char>(fname, 0, Nx, Ny, cell_type);
 
@@ -161,6 +161,18 @@ int run_main(int argc, char* argv[])
 		vely[i] = vy[idx];
 		ids[i] = sub2idx(posy[i] / dx, posx[i] / dx, Ny, Nx); // i/j deliberately swapped here
 	}
+
+	auto interp_vel = [&](double x, double y, double& vx_, double& vy_){
+		int xidx = (int)(x / dx);
+		int yidx = (int)(y / dx);
+		int idx00 = sub2idx(xidx, yidx, Nx, Ny);
+		int idx10 = sub2idx(periodic(xidx + 1, Nx), yidx, Nx, Ny);
+		int idx01 = sub2idx(xidx, periodic(yidx + 1, Ny), Nx, Ny);
+		int idx11 = sub2idx(periodic(xidx + 1, Nx), periodic(yidx + 1, Ny), Nx, Ny);
+
+		vx_ = bilinear_interp(x, y, xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
+		vy_ = bilinear_interp(x, y, xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
+	};
 
 	// run the simulation
 	int fact = dtout / dt;
@@ -354,38 +366,27 @@ int run_main(int argc, char* argv[])
 			}
 		}
 
-		// advect tracers using improved Euler method
+		// advect tracers using RK4 integration
 		for (int i = 0; i < num_tracers; ++i)
 		{
-			int xidx = (int)(posx[i] / dx);
-			int yidx = (int)(posy[i] / dx);
-			int idx00 = sub2idx(xidx, yidx, Nx, Ny);
-			int idx10 = sub2idx(periodic(xidx+1,Nx), yidx, Nx, Ny);
-			int idx01 = sub2idx(xidx, periodic(yidx+1,Ny), Nx, Ny);
-			int idx11 = sub2idx(periodic(xidx + 1, Nx), periodic(yidx + 1, Ny), Nx, Ny);
+			double vx1, vx2, vx3, vx4;
+			double vy1, vy2, vy3, vy4;
+						
+			interp_vel(posx[i], posy[i], vx1, vy1);
+			double posx2 = periodic(posx[i] + 0.5*dt*vx1, Lx);
+			double posy2 = periodic(posy[i] + 0.5*dt*vy1, Ly);
 
-			double vx1, vx2, vy1, vy2;
-			vx1 = bilinear_interp(posx[i], posy[i], xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
-			vy1 = bilinear_interp(posx[i], posy[i], xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
-			
-			// initial guess
-			double posx1 = periodic(posx[i] + dt*vx1, Lx);
-			double posy1 = periodic(posy[i] + dt*vy1, Ly);
+			interp_vel(posx2, posy2, vx2, vy2);
+			double posx3 = periodic(posx[i] + 0.5*dt*vx2, Lx);
+			double posy3 = periodic(posy[i] + 0.5*dt*vy2, Ly);
 
-			// could have moved out of the grid cell => recalculate idxs
-			xidx = (int)(posx1 / dx);
-			yidx = (int)(posy1 / dx);
-			idx00 = sub2idx(xidx, yidx, Nx, Ny);
-			idx10 = sub2idx(periodic(xidx + 1, Nx), yidx, Nx, Ny);
-			idx01 = sub2idx(xidx, periodic(yidx + 1, Ny), Nx, Ny);
-			idx11 = sub2idx(periodic(xidx + 1, Nx), periodic(yidx + 1, Ny), Nx, Ny);
+			interp_vel(posx3, posy3, vx3, vy3);
+			double posx4 = periodic(posx[i] + dt*vx3, Lx);
+			double posy4 = periodic(posy[i] + dt*vy3, Ly);
 
-			vx2 = bilinear_interp(posx1, posy1, xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
-			vy2 = bilinear_interp(posx1, posy1, xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
-
-			// corrector step
-			posx[i] = periodic(posx[i] + 0.5*dt*(vx1 + vx2), Lx);
-			posy[i] = periodic(posy[i] + 0.5*dt*(vy1 + vy2), Ly);
+			interp_vel(posx4, posy4, vx4, vy4);
+			posx[i] = periodic(posx[i] + (1. / 6.)*dt*(vx1 + 2.*vx2 + 2.*vx3 + vx4), Lx);
+			posy[i] = periodic(posy[i] + (1. / 6.)*dt*(vy1 + 2.*vy2 + 2.*vy3 + vy4), Ly);
 
 			// strictly should be recalculated at the new position but this is for visualization only
 			velx[i] = vx2; 
