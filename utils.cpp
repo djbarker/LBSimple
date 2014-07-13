@@ -1,27 +1,29 @@
 #include "utils.h"
 
-#include <memory>
-
-#include <vtkPNGReader.h>
-#include <vtkImageData.h>
-#include <vtkSmartPointer.h>
-
 using namespace std;
 
-int sub2idx(int i, int j, int Nx, int Ny)
+template<>
+void raster(Vect<int, 2>& sub, const Vect<int, 2>& extent)
 {
-	return i + j*Nx;
+	sub[0] += 1;
+	if (sub[0] == extent[0])
+	{
+		sub[0] = 0;
+		sub[1] += 1;
+	}
 }
 
-double bilinear_interp(double x, double y, double x0, double y0, double dx, double f00, double f10, double f01, double f11)
+template<>
+Vect<int,2> raster_end(const Vect<int, 2>& extent)
 {
-	double x_ = (x - x0) / dx;
-	double y_ = (y - y0) / dx;
-	double b1 = f00;
-	double b2 = f10 - f00;
-	double b3 = f01 - f00;
-	double b4 = f00 - f10 - f01 + f11;
-	double out = b1 + b2*x_ + b3*y_ + b4*x_*y_;
+	Vect<int, 2> end = { extent[0] - 1, extent[1] - 1 };
+	raster(end, extent);
+	return end;
+	//return Vect<int, 2>{ 0, extent[1] };
+}
 
-	return out;
+template<>
+int sub2idx<2>(const Vect<int, 2>& sub, const Vect<int, 2>& extent)
+{
+	return sub[0] + sub[1]*extent[0];
 }

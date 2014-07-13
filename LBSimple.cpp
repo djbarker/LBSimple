@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <random>
 #include <fstream>
 #include <sstream>
@@ -20,20 +20,17 @@
 #include <vtkXMLPolyDataWriter.h>
 
 #include "utils.h"
+#include "Model.hpp"
 
 using namespace std;
 
-// model params
-const int qs[9][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 }, { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } };
-const int qneg[9] = { 0, 3, 4, 1, 2, 7, 8, 5, 6 };
-const double Ws[9] = { 4. / 9., 1. / 9., 1. / 9., 1. / 9., 1. / 9., 1. / 36., 1. / 36., 1. / 36., 1. / 36. };
-
-double get_feq(double vx, double vy, double rho, double c, int q)
+template<class Model>
+double get_feq(const Vect<double, 2>& v, double rho, double c, int q)
 {
-	double v_dot_e = vx*qs[q][0] + vy*qs[q][1];
-	double v_dot_v = vx*vx + vy*vy;
+	double v_dot_e = dot((Model::Es[q]).as<double>(), v);
+	double v_dot_v = dot(v, v);
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
-	return Ws[q] * rho*(1.0 + s);
+	return Model::Ws[q] * rho*(1.0 + s);
 }
 
 void get_vortex(double x0, double y0, double x, double y, double vx, double vy, double vmax, double sigma, bool clockwise, double Lx, double Ly, double &vxout, double& vyout)
@@ -41,13 +38,20 @@ void get_vortex(double x0, double y0, double x, double y, double vx, double vy, 
 	double dxp = periodic(x - x0 + Lx / 2., Lx) - Lx / 2.;
 	double dyp = periodic(y - y0 + Ly / 2., Ly) - Ly / 2.;
 	double r = sqrt(dxp*dxp + dyp*dyp);
-	double v = (2 * r / (sigma*sigma))*exp(-r*r/(sigma*sigma));
+	double v = (2 * r / (sigma*sigma))*exp(-r*r / (sigma*sigma));
 	double theta = atan2(dyp, dxp);
 
-	vxout = +vmax*v*sin(theta)*(clockwise ? 1 : -1) + 2*exp(-r*r/(sigma*sigma))*vmax*vx;
-	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2*exp(-r*r / (sigma*sigma))*vmax*vy;
+	vxout = +vmax*v*sin(theta)*(clockwise ? 1 : -1) + 2 * exp(-r*r / (sigma*sigma))*vmax*vx;
+	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2 * exp(-r*r / (sigma*sigma))*vmax*vy;
 }
 
+// select the model
+#define the_model D2Q9
+#define Dims 2
+#define Q 9
+
+typedef Vect<double, Dims> vect_t;
+typedef Vect<int, Dims> sub_t;
 
 int run_main(int argc, char* argv[])
 {
@@ -58,78 +62,73 @@ int run_main(int argc, char* argv[])
 
 	// params - hard coded for now
 	double dx = 0.0001;
-	double dt = 0.00005;
-	double dtout = 0.001;
+	double dt = 0.0001;
+	double dtout = 0.005;
 	double rho0 = 1000.;
-	double nu = 0.01/rho0;
-	double gx = 0.001;
-	double gy = 0.0;
+	double nu = 0.001 / rho0;
+	vect_t g = { 1E-4, 0.0 };
 	double perturbation = 0.5; // in percent
 
-	int Nx = 500;
-	int Ny = 300;
+	sub_t N = { 500, 300 };
 	double c = dx / dt;
-	double tau = 3. * nu*(1. /(c* dx)) + 0.5;
+	double tau = 3. * nu*(1. / (c* dx)) + 0.5;
 
 	string fname = "domain4.raw";
 	unique_ptr<CellType[]> cell_type;
-	read_raw<unsigned char>(fname, 0, Nx, Ny, cell_type);
+	read_raw<unsigned char>(fname, 0, N[0], N[1], cell_type);
 
-	double Lx = Nx*dx;
-	double Ly = Ny*dx;
+	vect_t L = N.as<double>()*dx;
 
 	cout << "C = " << c << endl;
 	cout << "Tau = " << tau << endl;
-	cout << "N = (" << Nx << ", " << Ny << ")" << endl;
-	cout << "L = (" << Lx << ", " << Ly << ")" << endl;
+	cout << "N = (" << N[0] << ", " << N[1] << ")" << endl;
+	cout << "L = (" << L[0] << ", " << L[1] << ")" << endl;
 
 	// allocate memory
-	auto f = make_unique<array<double, 9>[]>(Nx*Ny);
-	auto feq = make_unique<array<double, 9>[]>(Nx*Ny);
-	auto vx = make_unique<double[]>(Nx*Nx);
-	auto vy = make_unique<double[]>(Nx*Nx);
-	auto rho = make_unique<double[]>(Nx*Nx);
+	auto f = make_unique<Vect<double, Q>[]>(trace(N));
+	auto feq = make_unique<Vect<double, Q>[]>(trace(N));
+	auto v = make_unique<vect_t[]>(trace(N));
+	auto rho = make_unique<double[]>(trace(N));
 
 	mt19937_64 rng(42);
 	uniform_real_distribution<double> pert_dist(-perturbation / 100., perturbation / 100.);
 
+	cout << "Initializing cells..." << endl;
+
 	// initialize arrays
-	for (int i = 0; i < Nx;++i)
-	for (int j = 0; j < Ny; ++j)
+	for (sub_t sub; sub != raster_end(N); raster(sub, N))
 	{
-		double vx_, vy_;
+		int idx = sub2idx(sub, N);
 
-		//vx_ = 0.015*c*cos((j*dx / L - L*0.75)*M_PI*2.) + 0.025*c*cos((j*dx / L - L*0.5)*M_PI * 4) + 0.025*c*cos((j*dx / L - L*0.15)*M_PI * 6) + 0.01*c*cos((j*dx / L - L*0.5)*M_PI * 8);
-		//vy_ = 0.015*c*cos((i*dx / L - L*0.25)*M_PI*2.) + 0.025*c*cos((i*dx / L - L*0.125)*M_PI * 4) + 0.025*c*cos((i*dx / L - L*0.2)*M_PI * 6) + 0.01*c*cos((i*dx / L - L*0.7)*M_PI * 8);
-		
-		vx_ = 0.0;
-		vy_ = 0.0;
+		vect_t v_ = { 0.0, 0.0 };
 
-		int idx = sub2idx(i, j, Nx, Ny);
+		//v_[0] = 0.015*c*cos((j*dx / L - L*0.75)*M_PI*2.) + 0.025*c*cos((j*dx / L - L*0.5)*M_PI * 4) + 0.025*c*cos((j*dx / L - L*0.15)*M_PI * 6) + 0.01*c*cos((j*dx / L - L*0.5)*M_PI * 8);
+		//v_[1] = 0.015*c*cos((i*dx / L - L*0.25)*M_PI*2.) + 0.025*c*cos((i*dx / L - L*0.125)*M_PI * 4) + 0.025*c*cos((i*dx / L - L*0.2)*M_PI * 6) + 0.01*c*cos((i*dx / L - L*0.7)*M_PI * 8);
 
-		if(cell_type[idx] != Fluid) vx_ = vy_ = 0.0;
+		if (cell_type[idx] != Fluid) v_ = vect_t(); // zero
 
 		for (int q = 0; q < 9; ++q)
 		{
-			feq[idx][q]=f[idx][q] = get_feq(vx_, vy_, rho0, c, q);
+			feq[idx][q] = f[idx][q] = get_feq<Model<D2Q9>>(v_, rho0, c, q);
 			f[idx][q] *= (1 + pert_dist(rng));
 		}
 
-		vx[idx] = vx_;
-		vy[idx] = vy_;
+		v[idx] = v_;
 		rho[idx] = rho0;
 	}
 
+	cout << "Initializing tracers..." << endl;
+
 	// initialize tracers
 	int num_tracers = 5E4;
-	auto posx = make_unique<double[]>(num_tracers);
-	auto posy = make_unique<double[]>(num_tracers);
-	auto velx = make_unique<double[]>(num_tracers);
-	auto vely = make_unique<double[]>(num_tracers);
+	auto pos = make_unique<vect_t[]>(num_tracers);
+	auto vel = make_unique<vect_t[]>(num_tracers);
 	auto ids = make_unique<int[]>(num_tracers);
 
-	uniform_real_distribution<double> dist_x(0.0, Lx);
-	uniform_real_distribution<double> dist_y(0.0, Ly);
+	array<uniform_real_distribution<double>, 2> dist;
+	for (int d = 0; d < Dims; ++d)
+		dist[d] = uniform_real_distribution<double>(0, L[d]);
+
 	bool random = true;
 
 	for (int i = 0; i < num_tracers; ++i)
@@ -139,44 +138,56 @@ int run_main(int argc, char* argv[])
 			bool valid = false;
 			while (!valid)
 			{
-				posx[i] = dist_x(rng);
-				posy[i] = dist_y(rng);
+				for (int d = 0; d < Dims; ++d)
+					pos[i][d] = dist[d](rng);
 
-				valid = cell_type[sub2idx(posx[i] / dx, posy[i] / dx, Nx, Ny)] == Fluid;
+				valid = cell_type[sub2idx((pos[i] / dx).as<int>(), N)] == Fluid;
 			}
 		}
 		else
 		{
-			int N = (int)sqrt(num_tracers*(Lx / Ly));
-			double dx_ = Lx / N;
-			posx[i] = (i - (i / N)*N) * dx_;
-			posy[i] = (i / N) * dx_;
+			if (Dims == 2)
+			{
+				int M = (int)sqrt(num_tracers*(L[0] / L[1]));
+				double dx_ = L[0] / M;
+				pos[i][0] = (i - (i / M)*M) * dx_;
+				pos[i][1] = (i / M) * dx_;
+			}
+			else if (Dims == 3)
+			{
+				// TODO: implement
+			}
+
 		}
 
-		int xidx = posx[i] / dx;
-		int yidx = posy[i] / dx;
-		int idx = sub2idx(xidx, yidx, Nx, Ny);
-		
-		velx[i] = vx[idx];
-		vely[i] = vy[idx];
-		ids[i] = sub2idx(posy[i] / dx, posx[i] / dx, Ny, Nx); // i/j deliberately swapped here
+		int idx = sub2idx((pos[i] / dx).as<int>(), N);
+
+		for (int d = 0; d < Dims; ++d)
+			vel[i] = v[idx];
+
+		ids[i] = idx;
 	}
 
-	auto interp_vel = [&](double x, double y, double& vx_, double& vy_){
-		int xidx = (int)(x / dx);
-		int yidx = (int)(y / dx);
-		int idx00 = sub2idx(xidx, yidx, Nx, Ny);
-		int idx10 = sub2idx(periodic(xidx + 1, Nx), yidx, Nx, Ny);
-		int idx01 = sub2idx(xidx, periodic(yidx + 1, Ny), Nx, Ny);
-		int idx11 = sub2idx(periodic(xidx + 1, Nx), periodic(yidx + 1, Ny), Nx, Ny);
+	auto interp_vel = [&](vect_t x, vect_t& v_){
+		if (Dims == 2)
+		{
+			auto idx = (x / dx).as<int>();
+			int idx00 = sub2idx(idx, N);
+			int idx10 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), idx[1] }, N);
+			int idx01 = sub2idx(sub_t{ idx[0], periodic(idx[1] + 1, N[1]) }, N);
+			int idx11 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]) }, N);
 
-		vx_ = bilinear_interp(x, y, xidx*dx, yidx*dx, dx, vx[idx00], vx[idx10], vx[idx01], vx[idx11]);
-		vy_ = bilinear_interp(x, y, xidx*dx, yidx*dx, dx, vy[idx00], vy[idx10], vy[idx01], vy[idx11]);
+			v_ = bilinear_interp(x, (idx).as<double>()*dx, dx, v[idx00], v[idx10], v[idx01], v[idx11]);
+		}
+		else
+		{
+			// TODO: implement
+		}
 	};
 
 	// run the simulation
 	int fact = dtout / dt;
-	for (int iteration = 0; iteration < fact*1000; ++iteration)
+	for (int iteration = 0; iteration < fact * 1000; ++iteration)
 	{
 		// write out data files
 		if (iteration % fact == 0)
@@ -189,42 +200,50 @@ int run_main(int argc, char* argv[])
 			{
 				// setup arrays and vtkImageData objects
 				vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
-				data->SetExtent(0, Nx - 1, 0, Ny - 1, 0, 0);
-				data->SetSpacing(dx*(Nx)/(Nx-1), dx*(Ny)/(Ny-1), 0);
+				data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, 0);
+				data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), 0);
 				data->SetOrigin(0, 0, 0);
 
 				vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
 				rho_arr->SetName("Density");
 				rho_arr->SetNumberOfComponents(1);
-				rho_arr->SetNumberOfTuples(Nx*Ny);
+				rho_arr->SetNumberOfTuples(trace(N));
 
 				vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
 				vel_arr->SetName("Velocity");
 				vel_arr->SetNumberOfComponents(3);
-				vel_arr->SetNumberOfTuples(Nx*Ny);
+				vel_arr->SetNumberOfTuples(trace(N));
 
 				vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
 				curl_arr->SetName("Vorticity");
 				curl_arr->SetNumberOfComponents(1);
-				curl_arr->SetNumberOfTuples(Nx*Ny);
+				curl_arr->SetNumberOfTuples(trace(N));
+
+				vtkSmartPointer<vtkDoubleArray> type_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				type_arr->SetName("CellType");
+				type_arr->SetNumberOfComponents(1);
+				type_arr->SetNumberOfTuples(trace(N));
 
 				vtkPointData* pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
 				pdata->AddArray(vel_arr);
 				pdata->AddArray(rho_arr);
 				pdata->AddArray(curl_arr);
+				pdata->AddArray(type_arr);
 				pdata->SetActiveAttribute("Velocity", vtkDataSetAttributes::VECTORS);
 
-				for (int i = 0; i < Nx; ++i)
-				for (int j = 0; j < Ny; ++j)
+				for (int i = 0; i < N[0]; ++i)
+				for (int j = 0; j < N[1]; ++j)
 				{
-					int idx = sub2idx(i, j, Nx, Ny);
+					int idx = sub2idx(sub_t{ i, j }, N);
 
-					double curl = (vy[sub2idx(periodic(i + 1, Nx), j, Nx, Ny)] - vy[sub2idx(periodic(i - 1, Nx), j, Nx, Ny)]) - (vx[sub2idx(i, periodic(j + 1, Ny), Nx, Ny)] - vx[sub2idx(i, periodic(j - 1, Ny), Nx, Ny)]);
+					double curl = (v[sub2idx(sub_t{ periodic(i + 1, N[0]), j }, N)][1] - v[sub2idx(sub_t{ periodic(i - 1, N[0]), j }, N)][1])
+						- (v[sub2idx(sub_t{ i, periodic(j + 1, N[1]) }, N)][0] - v[sub2idx(sub_t{ i, periodic(j - 1, N[1]) }, N)][0]);
 					curl /= (2 * dx);
 
-					vel_arr->SetTuple3(idx, vx[idx], vy[idx], 0.0);
+					vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], 0.0);
 					rho_arr->SetTuple1(idx, rho[idx]);
 					curl_arr->SetTuple1(idx, curl);
+					type_arr->SetTuple1(idx, cell_type[idx]);
 				}
 
 				vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
@@ -260,8 +279,8 @@ int run_main(int argc, char* argv[])
 
 				for (int i = 0; i < num_tracers; ++i)
 				{
-					points->InsertNextPoint(posx[i], posy[i], 0.0);
-					vel_arr->SetTuple3(i, velx[i], vely[i], 0.0);
+					points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
+					vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
 					id_arr->SetTuple1(i, ids[i]);
 					vtkIdType id[1] = { i };
 					vertices->InsertNextCell(1, id);
@@ -289,35 +308,31 @@ int run_main(int argc, char* argv[])
 		}
 
 		// stream - use feq as temporary storage
-		for (int i = 0; i < Nx; ++i)
-		for (int j = 0; j < Ny; ++j)
+		for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		{
-			int idx = sub2idx(i, j, Nx, Ny);
+			int idx = sub2idx(sub, N);
 			if (cell_type[idx] == Empty) continue;
 
-			for (int q = 0; q < 9; ++q)
+			for (int q = 0; q < Q; ++q)
 			{
-				int qi = qs[q][0];
-				int qj = qs[q][1];
-
-				int neighbour_idx = sub2idx(periodic(i + qi, Nx), periodic(j + qj, Ny), Nx, Ny);
-				if (cell_type[neighbour_idx] == Fluid)
+				int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
+				if (cell_type[neighbour_idx] != Empty)
 				{
 					feq[neighbour_idx][q] = f[idx][q];
-				}				
+				}
 			}
 
 			if (cell_type[idx] == Wall)
 			{
-				for (int q = 0; q < 9; ++q)
+				for (int q = 0; q < Q; ++q)
 				{
-					int qi = qs[q][0];
-					int qj = qs[q][1];
+					int qi = Model<the_model>::Es[q][0];
+					int qj = Model<the_model>::Es[q][1];
 
-					int neighbour_idx = sub2idx(periodic(i + qi, Nx), periodic(j + qj, Ny), Nx, Ny);
+					int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
 					if (cell_type[neighbour_idx] != Fluid)
 					{
-						feq[idx][qneg[q]] = f[idx][q];
+						feq[idx][Model<the_model>::Qneg[q]] = f[idx][q];
 					}
 				}
 			}
@@ -325,42 +340,35 @@ int run_main(int argc, char* argv[])
 		std::swap(f, feq);
 
 		// calc macroscopic properties
-		for (int i = 0; i < Nx; ++i)
-		for (int j = 0; j < Ny; ++j)
+		for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		{
-			int idx = sub2idx(i, j, Nx, Ny);
+			int idx = sub2idx(sub, N);
 			if (cell_type[idx] == Empty) continue;
 
 			rho[idx] = 0.0;
-			for (int q = 0; q < 9; ++q)
+			for (int q = 0; q < Q; ++q)
 				rho[idx] += f[idx][q];
 
-			vx[idx] = vy[idx] = 0.0;
-			for (int q = 0; q < 9; ++q)
+			v[idx] = { 0.0, 0.0 };
+			for (int q = 0; q < Q; ++q)
 			{
-				int qi = qs[q][0];
-				int qj = qs[q][1];
-
-				vx[idx] += qi*f[idx][q];
-				vy[idx] += qj*f[idx][q];
+				v[idx] += (Model<the_model>::Es[q]).as<double>() * f[idx][q];
 			}
-			vx[idx] *= c / rho[idx];
-			vy[idx] *= c / rho[idx];
+			v[idx] *= c / rho[idx];
 		}
 
 		// calculate equilibrium distribution & update f
-		for (int i = 0; i < Nx; ++i)
-		for (int j = 0; j < Ny; ++j)
+		for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		{
-			int idx = sub2idx(i, j, Nx, Ny);
+			int idx = sub2idx(sub, N);
 			if (cell_type[idx] == Empty) continue;
 
-			for (int q = 0; q < 9; ++q)
+			for (int q = 0; q < Q; ++q)
 			{
 				if (cell_type[idx] == Fluid)
-					feq[idx][q] = get_feq(vx[idx] + gx*tau, vy[idx] + gy*tau, rho[idx], c, q);
+					feq[idx][q] = get_feq<Model<the_model>>(v[idx] + g*tau, rho[idx], c, q);
 				else
-					feq[idx][q] = get_feq(vx[idx], vy[idx] , rho[idx], c, q);
+					feq[idx][q] = get_feq<Model<the_model>>(v[idx], rho[idx], c, q);
 
 				f[idx][q] = f[idx][q] - (1. / tau)*(f[idx][q] - feq[idx][q]);
 			}
@@ -369,28 +377,22 @@ int run_main(int argc, char* argv[])
 		// advect tracers using RK4 integration
 		for (int i = 0; i < num_tracers; ++i)
 		{
-			double vx1, vx2, vx3, vx4;
-			double vy1, vy2, vy3, vy4;
-						
-			interp_vel(posx[i], posy[i], vx1, vy1);
-			double posx2 = periodic(posx[i] + 0.5*dt*vx1, Lx);
-			double posy2 = periodic(posy[i] + 0.5*dt*vy1, Ly);
+			vect_t v1, v2, v3, v4;
 
-			interp_vel(posx2, posy2, vx2, vy2);
-			double posx3 = periodic(posx[i] + 0.5*dt*vx2, Lx);
-			double posy3 = periodic(posy[i] + 0.5*dt*vy2, Ly);
+			interp_vel(pos[i], v1);
+			auto pos2 = periodic(pos[i] + 0.5*dt*v1, L);
 
-			interp_vel(posx3, posy3, vx3, vy3);
-			double posx4 = periodic(posx[i] + dt*vx3, Lx);
-			double posy4 = periodic(posy[i] + dt*vy3, Ly);
+			interp_vel(pos2, v2);
+			auto pos3 = periodic(pos[i] + 0.5*dt*v2, L);
 
-			interp_vel(posx4, posy4, vx4, vy4);
-			posx[i] = periodic(posx[i] + (1. / 6.)*dt*(vx1 + 2.*vx2 + 2.*vx3 + vx4), Lx);
-			posy[i] = periodic(posy[i] + (1. / 6.)*dt*(vy1 + 2.*vy2 + 2.*vy3 + vy4), Ly);
+			interp_vel(pos3, v3);
+			auto pos4 = periodic(pos[i] + dt*v3, L);
+
+			interp_vel(pos4, v4);
+			pos[i] = periodic(pos[i] + (1. / 6.)*dt*(v1 + 2.*v2 + 2.*v3 + v4), L);
 
 			// strictly should be recalculated at the new position but this is for visualization only
-			velx[i] = vx2; 
-			vely[i] = vy2;
+			vel[i] = v1;
 		}
 	}
 
