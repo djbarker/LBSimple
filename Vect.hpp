@@ -47,7 +47,7 @@ public:
 	
 	Vect(std::initializer_list<T> list)
 	{
-		assert(list.size() == D && "Incorrectly sizes initializer_list provided to Vect<T,D>!");
+		assert(list.size() == D && "Incorrectly sized initializer_list provided to Vect<T,D>!");
 		int i = 0;
 		for (auto item : list)
 		{
@@ -56,17 +56,19 @@ public:
 		}
 	}
 
+	/* 
 	// stop the variadic template constructor hiding copy constructor for non-const objects
-	/*Vect(Vect<T, D>& v)
+	Vect(Vect<T, D>& v)
 		:Vect<T, D>(const_cast<const Vect<T,D>&>(v))
 	{
-	}*/
+	}
 
 	// init each component to a different value
-	/*template<typename U, typename... Us>
+	template<typename U, typename... Us>
 	Vect(U&& u, Us&&... us) : components{ { std::forward<U>(u), std::forward<Us>(us)... } } {
 		static_assert(sizeof...(Us) == D - 1, "Not enough args supplied!");
-	}*/
+	}
+	*/
 
 	template<class S>
 	Vect<S, D> as() const

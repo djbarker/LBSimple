@@ -1,23 +1,24 @@
-#include <iostream>
-#include <random>
-#include <fstream>
-#include <sstream>
 #include <array>
-#include <memory>
-#include <iomanip>
+#include <chrono>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <random>
+#include <sstream>
 
-#include <vtkFileOutputWindow.h>
-#include <vtkSmartPointer.h>
+#include <vtkCellArray.h>
 #include <vtkDoubleArray.h>
+#include <vtkFileOutputWindow.h>
+#include <vtkIdList.h>
 #include <vtkImageData.h>
 #include <vtkPointData.h>
-#include <vtkCellArray.h>
 #include <vtkPolyData.h>
-#include <vtkIdList.h>
-#include <vtkZLibDataCompressor.h>
+#include <vtkSmartPointer.h>
 #include <vtkXMLImageDataWriter.h>
 #include <vtkXMLPolyDataWriter.h>
+#include <vtkZLibDataCompressor.h>
 
 #include "utils.h"
 #include "Model.hpp"
@@ -304,7 +305,7 @@ int run_main(int argc, char* argv[])
 				}
 			}
 
-			cout << "iteration " << iteration << "\tt = " << iteration *dt << " s" << endl;
+			cout << iteration / fact << ": " << iteration << " itrs,\tt = " << iteration *dt << " s" << endl;
 		}
 
 		// stream - use feq as temporary storage
@@ -316,7 +317,7 @@ int run_main(int argc, char* argv[])
 			for (int q = 0; q < Q; ++q)
 			{
 				int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
-				if (cell_type[neighbour_idx] != Empty)
+				if (cell_type[neighbour_idx] == Fluid)
 				{
 					feq[neighbour_idx][q] = f[idx][q];
 				}
@@ -326,9 +327,6 @@ int run_main(int argc, char* argv[])
 			{
 				for (int q = 0; q < Q; ++q)
 				{
-					int qi = Model<the_model>::Es[q][0];
-					int qj = Model<the_model>::Es[q][1];
-
 					int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
 					if (cell_type[neighbour_idx] != Fluid)
 					{
