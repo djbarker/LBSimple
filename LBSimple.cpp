@@ -20,18 +20,26 @@
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkZLibDataCompressor.h>
 
-#include "utils.h"
+#include "utils.hpp"
 #include "Model.hpp"
+
+// select the model
+#define the_model D3Q19
+#define Dims 3
+#define Q 19
+
+typedef Vect<double, Dims> vect_t;
+typedef Vect<int, Dims> sub_t;
 
 using namespace std;
 
-template<class Model>
-double get_feq(const Vect<double, 2>& v, double rho, double c, int q)
+template<ModelType M>
+double get_feq(const vect_t& v, double rho, double c, int q)
 {
-	double v_dot_e = dot((Model::Es[q]).as<double>(), v);
+	double v_dot_e = dot((Model<M>::Es[q]).as<double>(), v);
 	double v_dot_v = dot(v, v);
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
-	return Model::Ws[q] * rho*(1.0 + s);
+	return Model<M>::Ws[q] * rho*(1.0 + s);
 }
 
 void get_vortex(double x0, double y0, double x, double y, double vx, double vy, double vmax, double sigma, bool clockwise, double Lx, double Ly, double &vxout, double& vyout)
@@ -46,13 +54,31 @@ void get_vortex(double x0, double y0, double x, double y, double vx, double vy, 
 	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2 * exp(-r*r / (sigma*sigma))*vmax*vy;
 }
 
-// select the model
-#define the_model D2Q9
-#define Dims 2
-#define Q 9
+Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const unique_ptr<Vect<double, 2>[]>& v)
+{
+	Vect<double, 3> curl;
+	curl[2] = v[sub2idx(periodic(sub + Vect<int, 2>{1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{-1, 0}, N), N)][1]
+		    - v[sub2idx(periodic(sub + Vect<int, 2>{0, 1}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 2>{0, -1}, N), N)][0];
+	curl[2] /= 2 * dx;
 
-typedef Vect<double, Dims> vect_t;
-typedef Vect<int, Dims> sub_t;
+	return curl;
+}
+
+Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const unique_ptr<Vect<double, 3>[]>& v)
+{
+	Vect<double, 3> curl;
+	curl[2] = v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][1]
+		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][0];
+
+	curl[1] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][0] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][0]
+		    - v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][2] + v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][2];
+
+	curl[0] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][2] - v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][2]
+		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][1] + v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][1];
+	curl /= 2 * dx;
+
+	return curl;
+}
 
 int run_main(int argc, char* argv[])
 {
@@ -62,28 +88,36 @@ int run_main(int argc, char* argv[])
 	vtkout->SetFileName("vtk_output.txt");
 
 	// params - hard coded for now
-	double dx = 0.0001;
-	double dt = 0.0001;
+	double dx = 0.001;
+	double dt = 0.001;
 	double dtout = 0.005;
 	double rho0 = 1000.;
 	double nu = 0.001 / rho0;
-	vect_t g = { 1E-4, 0.0 };
+	vect_t g = { 0.0, 0.0, 0.0 };
 	double perturbation = 0.5; // in percent
 
-	sub_t N = { 500, 300 };
+	sub_t N = { 100, 100, 100 };
 	double c = dx / dt;
 	double tau = 3. * nu*(1. / (c* dx)) + 0.5;
 
-	string fname = "domain4.raw";
+
 	unique_ptr<CellType[]> cell_type;
-	read_raw<unsigned char>(fname, 0, N[0], N[1], cell_type);
+	if (Dims == 2)
+	{
+		string fname = "domain4.raw";
+		read_raw<unsigned char>(fname, 0, N[0], N[1], cell_type);
+	}
+	else
+	{
+		cell_type = make_unique<CellType[]>(trace(N));
+	}
 
 	vect_t L = N.as<double>()*dx;
 
 	cout << "C = " << c << endl;
 	cout << "Tau = " << tau << endl;
-	cout << "N = (" << N[0] << ", " << N[1] << ")" << endl;
-	cout << "L = (" << L[0] << ", " << L[1] << ")" << endl;
+	cout << "N = " << N << " [" << trace(N) << "]" << endl;
+	cout << "L = " << L << endl;
 
 	// allocate memory
 	auto f = make_unique<Vect<double, Q>[]>(trace(N));
@@ -94,23 +128,38 @@ int run_main(int argc, char* argv[])
 	mt19937_64 rng(42);
 	uniform_real_distribution<double> pert_dist(-perturbation / 100., perturbation / 100.);
 
-	cout << "Initializing cells..." << endl;
+	cout << "Initializing cells... ";
+	cout.flush();
 
 	// initialize arrays
 	for (sub_t sub; sub != raster_end(N); raster(sub, N))
 	{
 		int idx = sub2idx(sub, N);
 
-		vect_t v_ = { 0.0, 0.0 };
+		vect_t v_ = vect_t::zero();
 
-		//v_[0] = 0.015*c*cos((j*dx / L - L*0.75)*M_PI*2.) + 0.025*c*cos((j*dx / L - L*0.5)*M_PI * 4) + 0.025*c*cos((j*dx / L - L*0.15)*M_PI * 6) + 0.01*c*cos((j*dx / L - L*0.5)*M_PI * 8);
-		//v_[1] = 0.015*c*cos((i*dx / L - L*0.25)*M_PI*2.) + 0.025*c*cos((i*dx / L - L*0.125)*M_PI * 4) + 0.025*c*cos((i*dx / L - L*0.2)*M_PI * 6) + 0.01*c*cos((i*dx / L - L*0.7)*M_PI * 8);
-
-		if (cell_type[idx] != Fluid) v_ = vect_t(); // zero
-
-		for (int q = 0; q < 9; ++q)
+		//v_[0] = 0.015*c*cos((sub[1] * dx / L[1] - L[1] * 0.75)*M_PI*2.) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 4) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.15)*M_PI * 6) + 0.01*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 8);
+		//v_[2] = v_[1] = 0.015*c*cos((sub[0] * dx / L[0] - L[0] * 0.25)*M_PI*2.) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.125)*M_PI * 4) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.2)*M_PI * 6) + 0.01*c*cos((sub[0] * dx / L[0] - L[0] * 0.7)*M_PI * 8);
+		
+		int i, j, k;
+		i = sub[0];
+		j = sub[1];
+		k = sub[2];
+		if (i > 20 && i <= 30 && j > 45 && j <= 55 && k > 45 && k <= 55)
 		{
-			feq[idx][q] = f[idx][q] = get_feq<Model<D2Q9>>(v_, rho0, c, q);
+			v_[0] = 0.2*c;
+		}
+
+		if (i > 70 && i <= 80 && j > 45 && j <= 55 && k > 45 && k <= 55)
+		{
+			v_[0] = -0.2*c;
+		}
+
+		if (cell_type[idx] != Fluid) v_ = vect_t::zero();
+
+		for (int q = 0; q < Q; ++q)
+		{
+			feq[idx][q] = f[idx][q] = get_feq<the_model>(v_, rho0, c, q);
 			f[idx][q] *= (1 + pert_dist(rng));
 		}
 
@@ -118,7 +167,9 @@ int run_main(int argc, char* argv[])
 		rho[idx] = rho0;
 	}
 
-	cout << "Initializing tracers..." << endl;
+	cout << "Done." << endl;
+	cout << "Initializing tracers... ";
+	cout.flush();
 
 	// initialize tracers
 	int num_tracers = 5E4;
@@ -126,7 +177,7 @@ int run_main(int argc, char* argv[])
 	auto vel = make_unique<vect_t[]>(num_tracers);
 	auto ids = make_unique<int[]>(num_tracers);
 
-	array<uniform_real_distribution<double>, 2> dist;
+	array<uniform_real_distribution<double>, Dims> dist;
 	for (int d = 0; d < Dims; ++d)
 		dist[d] = uniform_real_distribution<double>(0, L[d]);
 
@@ -169,9 +220,10 @@ int run_main(int argc, char* argv[])
 		ids[i] = idx;
 	}
 
+	cout << "Done." << endl;
+
 	auto interp_vel = [&](vect_t x, vect_t& v_){
-		if (Dims == 2)
-		{
+#if Dims==2
 			auto idx = (x / dx).as<int>();
 			int idx00 = sub2idx(idx, N);
 			int idx10 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), idx[1] }, N);
@@ -179,14 +231,25 @@ int run_main(int argc, char* argv[])
 			int idx11 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]) }, N);
 
 			v_ = bilinear_interp(x, (idx).as<double>()*dx, dx, v[idx00], v[idx10], v[idx01], v[idx11]);
-		}
-		else
-		{
-			// TODO: implement
-		}
+#elif Dims==3
+			auto idx = (x / dx).as<int>();
+			int idx000 = sub2idx(idx, N);
+			int idx100 = sub2idx(periodic(idx + sub_t{ 1, 0, 0 }, N), N);
+			int idx010 = sub2idx(periodic(idx + sub_t{ 0, 1, 0 }, N), N);
+			int idx001 = sub2idx(periodic(idx + sub_t{ 0, 0, 1 }, N), N);
+			int idx110 = sub2idx(periodic(idx + sub_t{ 1, 1, 0 }, N), N);
+			int idx101 = sub2idx(periodic(idx + sub_t{ 1, 0, 1 }, N), N);
+			int idx011 = sub2idx(periodic(idx + sub_t{ 0, 1, 1 }, N), N);
+			int idx111 = sub2idx(periodic(idx + sub_t{ 1, 1, 1 }, N), N);
+
+			v_ = trilinear_interp(x, (idx).as<double>()*dx, dx, v[idx000], v[idx100], v[idx010], v[idx001], v[idx110], v[idx101], v[idx011], v[idx111]);
+#endif
 	};
 
+	cout << "Running simulation..." << endl;
+
 	// run the simulation
+	auto then = chrono::high_resolution_clock::now();
 	int fact = dtout / dt;
 	for (int iteration = 0; iteration < fact * 1000; ++iteration)
 	{
@@ -201,8 +264,17 @@ int run_main(int argc, char* argv[])
 			{
 				// setup arrays and vtkImageData objects
 				vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
-				data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, 0);
-				data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), 0);
+				if (Dims == 2)
+				{
+					data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, 0);
+					data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), 0);
+				}
+				else if (Dims == 3)
+				{
+					data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, N[2] - 1);
+					data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), dx*(N[2])/(N[2]-1));
+				}
+				
 				data->SetOrigin(0, 0, 0);
 
 				vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
@@ -217,10 +289,13 @@ int run_main(int argc, char* argv[])
 
 				vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
 				curl_arr->SetName("Vorticity");
-				curl_arr->SetNumberOfComponents(1);
+				if (Dims==2)
+					curl_arr->SetNumberOfComponents(1);
+				else
+					curl_arr->SetNumberOfComponents(3);
 				curl_arr->SetNumberOfTuples(trace(N));
 
-				vtkSmartPointer<vtkDoubleArray> type_arr = vtkSmartPointer<vtkDoubleArray>::New();
+				vtkSmartPointer<vtkIntArray> type_arr = vtkSmartPointer<vtkIntArray>::New();
 				type_arr->SetName("CellType");
 				type_arr->SetNumberOfComponents(1);
 				type_arr->SetNumberOfTuples(trace(N));
@@ -232,19 +307,23 @@ int run_main(int argc, char* argv[])
 				pdata->AddArray(type_arr);
 				pdata->SetActiveAttribute("Velocity", vtkDataSetAttributes::VECTORS);
 
-				for (int i = 0; i < N[0]; ++i)
-				for (int j = 0; j < N[1]; ++j)
+				for (sub_t sub; sub != raster_end(N); raster(sub, N))
 				{
-					int idx = sub2idx(sub_t{ i, j }, N);
-
-					double curl = (v[sub2idx(sub_t{ periodic(i + 1, N[0]), j }, N)][1] - v[sub2idx(sub_t{ periodic(i - 1, N[0]), j }, N)][1])
-						- (v[sub2idx(sub_t{ i, periodic(j + 1, N[1]) }, N)][0] - v[sub2idx(sub_t{ i, periodic(j - 1, N[1]) }, N)][0]);
-					curl /= (2 * dx);
-
-					vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], 0.0);
-					rho_arr->SetTuple1(idx, rho[idx]);
-					curl_arr->SetTuple1(idx, curl);
+					int idx = sub2idx(sub, N);
+					Vect<double, 3> curl = calculate_curl(sub, N, dx, v);
+					
 					type_arr->SetTuple1(idx, cell_type[idx]);
+					rho_arr->SetTuple1(idx, rho[idx]);
+					if (Dims == 2)
+					{
+						vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], 0.0);
+						curl_arr->SetTuple1(idx, curl[2]);
+					}
+					else
+					{
+						vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], v[idx][2]);
+						curl_arr->SetTuple3(idx, curl[0], curl[1], curl[2]);
+					}
 				}
 
 				vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
@@ -280,8 +359,17 @@ int run_main(int argc, char* argv[])
 
 				for (int i = 0; i < num_tracers; ++i)
 				{
-					points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
-					vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
+					if (Dims == 2)
+					{
+						points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
+						vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
+					}
+					else
+					{
+						points->InsertNextPoint(pos[i][0], pos[i][1], pos[i][2]);
+						vel_arr->SetTuple3(i, vel[i][0], vel[i][1], vel[i][2]);
+					}
+					
 					id_arr->SetTuple1(i, ids[i]);
 					vtkIdType id[1] = { i };
 					vertices->InsertNextCell(1, id);
@@ -305,7 +393,9 @@ int run_main(int argc, char* argv[])
 				}
 			}
 
-			cout << iteration / fact << ": " << iteration << " itrs,\tt = " << iteration *dt << " s" << endl;
+			auto now = std::chrono::high_resolution_clock::now();
+			cout << iteration / fact << ": " << "time/itr = " << (size_t)chrono::duration_cast<chrono::milliseconds>(now-then).count() / fact << " ms\tt = " << iteration *dt << " s" << endl;
+			then = now;
 		}
 
 		// stream - use feq as temporary storage
@@ -364,9 +454,9 @@ int run_main(int argc, char* argv[])
 			for (int q = 0; q < Q; ++q)
 			{
 				if (cell_type[idx] == Fluid)
-					feq[idx][q] = get_feq<Model<the_model>>(v[idx] + g*tau, rho[idx], c, q);
+					feq[idx][q] = get_feq<the_model>(v[idx] + g*tau, rho[idx], c, q);
 				else
-					feq[idx][q] = get_feq<Model<the_model>>(v[idx], rho[idx], c, q);
+					feq[idx][q] = get_feq<the_model>(v[idx], rho[idx], c, q);
 
 				f[idx][q] = f[idx][q] - (1. / tau)*(f[idx][q] - feq[idx][q]);
 			}

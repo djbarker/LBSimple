@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <initializer_list>
+#include <iostream>
 
 /** 
  * Thin wrapper for std::array with vector addition, etc.
@@ -152,6 +153,26 @@ public:
 		return *this;
 	}
 
+	Vect<T, D>& operator /= (T a)
+	{
+		for (size_t i = 0; i < D; ++i)
+			components[i] /= a;
+		return *this;
+	}
+
+	static Vect<T, D> zero()
+	{
+		return Vect<T, D>();
+	}
+
+	static Vect<T, D> ones()
+	{
+		Vect<T, D> out;
+		for (int i = 0; i < D; ++i)
+			out[i] = (T)1;
+		return out;
+	}
+
 private:
 	std::array<T, D> components;
 };
@@ -177,5 +198,15 @@ T trace(const Vect<T, D>& v)
 	T out = v[0];
 	for (size_t i = 1; i < D; ++i)
 		out *= v[i];
+	return out;
+}
+
+template<class T, size_t D>
+std::ostream& operator<<(std::ostream& out, const Vect<T, D>& v)
+{
+	out << "(";
+	for (int i = 0; i < D - 1; ++i)
+		out << v[i] << ", ";
+	out << v[D - 1] << ")";
 	return out;
 }
