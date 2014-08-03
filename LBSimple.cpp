@@ -1,5 +1,5 @@
 #include <array>
-#include <chrono>
+#include <ctime>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -24,9 +24,9 @@
 #include "Model.hpp"
 
 // select the model
-#define the_model D3Q19
-#define Dims 3
-#define Q 19
+#define the_model D2Q9
+#define Dims 2
+#define Q 9
 
 typedef Vect<double, Dims> vect_t;
 typedef Vect<int, Dims> sub_t;
@@ -90,13 +90,13 @@ int run_main(int argc, char* argv[])
 	// params - hard coded for now
 	double dx = 0.001;
 	double dt = 0.001;
-	double dtout = 0.005;
+	double dtout = 0.1;
 	double rho0 = 1000.;
 	double nu = 0.001 / rho0;
-	vect_t g = { 0.0, 0.0, 0.0 };
+	vect_t g = { 0.0001, 0.0 };
 	double perturbation = 0.5; // in percent
 
-	sub_t N = { 100, 100, 100 };
+	sub_t N = { 500, 300 };
 	double c = dx / dt;
 	double tau = 3. * nu*(1. / (c* dx)) + 0.5;
 
@@ -141,7 +141,7 @@ int run_main(int argc, char* argv[])
 		//v_[0] = 0.015*c*cos((sub[1] * dx / L[1] - L[1] * 0.75)*M_PI*2.) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 4) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.15)*M_PI * 6) + 0.01*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 8);
 		//v_[2] = v_[1] = 0.015*c*cos((sub[0] * dx / L[0] - L[0] * 0.25)*M_PI*2.) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.125)*M_PI * 4) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.2)*M_PI * 6) + 0.01*c*cos((sub[0] * dx / L[0] - L[0] * 0.7)*M_PI * 8);
 		
-		int i, j, k;
+		/*int i, j, k;
 		i = sub[0];
 		j = sub[1];
 		k = sub[2];
@@ -153,7 +153,7 @@ int run_main(int argc, char* argv[])
 		if (i > 70 && i <= 80 && j > 45 && j <= 55 && k > 45 && k <= 55)
 		{
 			v_[0] = -0.2*c;
-		}
+		}*/
 
 		if (cell_type[idx] != Fluid) v_ = vect_t::zero();
 
@@ -249,7 +249,7 @@ int run_main(int argc, char* argv[])
 	cout << "Running simulation..." << endl;
 
 	// run the simulation
-	auto then = chrono::high_resolution_clock::now();
+	auto then = std::clock();
 	int fact = dtout / dt;
 	for (int iteration = 0; iteration < fact * 1000; ++iteration)
 	{
@@ -393,8 +393,8 @@ int run_main(int argc, char* argv[])
 				}
 			}
 
-			auto now = std::chrono::high_resolution_clock::now();
-			cout << iteration / fact << ": " << "time/itr = " << (size_t)chrono::duration_cast<chrono::milliseconds>(now-then).count() / fact << " ms\tt = " << iteration *dt << " s" << endl;
+			auto now = std::clock();
+			cout << iteration / fact << ": " << "time/itr = " << (then-now)*1000 / (fact*CLOCKS_PER_SEC) << " ms\tt = " << iteration *dt << " s" << endl;
 			then = now;
 		}
 
