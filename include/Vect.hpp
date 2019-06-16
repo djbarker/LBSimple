@@ -33,6 +33,12 @@ public:
 		components = v.components;
 	}
 
+	Vect(const std::array<T, D>& v) {
+		for (int i = 0; i < D; ++i) {
+			components[i] = v[i];
+		}
+	}
+
 	~Vect()
 	{
 	}

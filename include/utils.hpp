@@ -1,17 +1,26 @@
 #pragma once
 
+#include <cmath>
 #include <string>
 #include <memory>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
 #include <sys/stat.h>
+
+#include "json.hpp"
+using json = nlohmann::json;
 
 #include "Vect.hpp"
 
+using namespace std;
+
 enum CellType
 {
-	Fluid,
-	Wall,
-	Empty
+	Fluid = 0,
+	Wall = 1,
+	Empty = 2,
 };
 
 // compile time factorial
@@ -103,7 +112,7 @@ T trilinear_interp(Vect<double, 3> x, Vect<double, 3> x0, double dx, T f000, T f
 }
 
 template<class T>
-void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::unique_ptr<CellType[]>& ptr)
+void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::unique_ptr<T[]>& ptr)
 {
 	// check size of file matches
 	struct stat filestatus;
@@ -111,25 +120,44 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 	
 	if ((filestatus.st_size - header) != Nx*Ny*sizeof(T))
 	{
-		stringstream msg;
+		std::stringstream msg;
 		msg << "File size does not match specified size:" << endl;
 		msg << '\t' << filestatus.st_size << " bytes. Expected " << header << " + " << Nx*Ny*sizeof(T) << " bytes.";
-		throw runtime_error(msg.str());
+		throw std::runtime_error(msg.str());
 	}
 
-	ptr = make_unique<CellType[]>(Nx*Ny);
+	ptr = std::make_unique<T[]>(Nx*Ny);
 
 	ifstream fin;
 	fin.open(fname.c_str());
 
+	std::unordered_map<T, int> counts;
+
 	// read in raw data
 	Vect<int, 2> N = { Nx, Ny };
 	T tmp;
+	int type;
 	for (int j = 0; j < Ny; ++j)
 	for (int i = 0; i < Nx; ++i)
 	{
 		fin.read((char*)&tmp, sizeof(T));
-		ptr[sub2idx(Vect<int, 2>{i, Ny - j - 1}, N)] = (tmp>0 ? Fluid : Empty);
+		if (tmp == std::numeric_limits<T>::max()) {
+			tmp = Fluid;
+		} else if (tmp == 0) {
+			tmp = Wall;
+		}
+		ptr[sub2idx(Vect<int, 2>{i, Ny - j - 1}, N)] = tmp;
+
+		if (counts.count((int)tmp) == 0) {
+			counts[(int)tmp] = 1;
+		}
+		
+		counts[(int)tmp] += 1;
+	}
+
+	cout << "Cell summary ... " << endl;
+	for (auto pair : counts) {
+		cout << " " << (int)pair.first << ": " << pair.second << endl;
 	}
 
 	for (int i = 0; i < Nx;++i)
@@ -146,3 +174,5 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 		}
 	}
 }
+
+// json::basic_json parse_config(string fname);

@@ -57,3 +57,4 @@ Vect<int, 3> calc_num_domains<3>(size_t nproc)
 
 	return Vect<int, 3>{root1, root2, (int)nproc / (root1*root2)};
 }
+

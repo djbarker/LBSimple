@@ -1,0 +1,30 @@
+{
+	"dx": 0.001,
+	"dt": 0.002,
+	"dt_out": 0.01,
+	"rho0": 100.0,
+	"gravity": [0.0, 0.0],
+	"perturbation": 0.5, 
+
+	"domain": {
+		"file": "../cylinder.data",
+		"size": [400, 200]
+	},
+	
+	"boundaries": {
+		"3": {
+			"type": "velocity",
+			"vel": [0.1, 0.0]
+		},
+
+		"5": {
+			"type": "velocity",
+			"vel": [0.1, 0.0]
+		}
+	},
+
+	"output": {
+		"grid": true,
+		"tracers": true
+	}
+}

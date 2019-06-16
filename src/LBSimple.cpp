@@ -20,6 +20,8 @@
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkZLibDataCompressor.h>
 
+#include "json.hpp" // nlohmann
+
 #include "utils.hpp"
 #include "Model.hpp"
 
@@ -27,6 +29,9 @@
 #define the_model D2Q9
 #define Dims 2
 #define Q 9
+// #define the_model D3Q19
+// #define Dims 3
+// #define Q 19
 
 typedef Vect<double, Dims> vect_t;
 typedef Vect<int, Dims> sub_t;
@@ -36,7 +41,7 @@ using namespace std;
 template<ModelType M>
 double get_feq(const vect_t& v, double rho, double c, int q)
 {
-	double v_dot_e = dot((Model<M>::Es[q]).as<double>(), v);
+	double v_dot_e = dot((Model<M>::Es[q]).template as<double>(), v);
 	double v_dot_v = dot(v, v);
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
 	return Model<M>::Ws[q] * rho*(1.0 + s);
@@ -80,6 +85,18 @@ Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, cons
 	return curl;
 }
 
+
+#include <json.hpp>
+using json = nlohmann::json;
+json parse_config(string fname) {
+	ifstream i(fname);
+	return json::parse(i);
+}
+
+
+typedef unsigned char RawType;
+
+
 int run_main(int argc, char* argv[])
 {
 	// redirect vtk messages to a file
@@ -87,29 +104,46 @@ int run_main(int argc, char* argv[])
 	vtkout->SetInstance(vtkout);
 	vtkout->SetFileName("vtk_output.txt");
 
-	// params - hard coded for now
-	double dx = 0.001;
-	double dt = 0.001;
-	double dtout = 0.1;
-	double rho0 = 1000.;
-	double nu = 0.001 / rho0;
-	vect_t g = { 0.0001, 0.0 };
-	double perturbation = 0.5; // in percent
+	ifstream ifs = ifstream(argv[1]);
+	auto config = json::parse(ifs);
+	cout << "Read config" << endl;
 
-	sub_t N = { 500, 300 };
+	// params - hard coded for now
+	double dx = config["dx"];
+	double dt = config["dt"];
+	double dtout = config["dt_out"]; 
+	double rho0 = config["rho0"];
+	double nu = 0.001 / rho0;
+	// vect_t g = { 0.0001, 0.0 };
+	vect_t g = config["gravity"].get<std::array<double, 2>>();
+	double perturbation = config["perturbation"]; // in percent
+
+#if Dims == 2
+	const int Nx = config["domain"]["size"][0];
+	const int Ny = config["domain"]["size"][1];
+	sub_t N = { Nx, Ny };
+#elif Dims == 3
+	const int Nx = config["domain"]["size"][0];
+	const int Ny = config["domain"]["size"][1];
+	const int Nz = config["domain"]["size"][2];
+	sub_t N = { Nx, Ny, Nz };
+#endif
+
 	double c = dx / dt;
 	double tau = 3. * nu*(1. / (c* dx)) + 0.5;
+	
+	const bool output_grid    = config["output"]["grid"]; // can eat lots of space
+	const bool output_tracers = config["output"]["tracers"];
 
-
-	unique_ptr<CellType[]> cell_type;
-	if (Dims == 2)
+	unique_ptr<RawType[]> cell_type;
+	if (Dims == 2 && config["domain"].count("file") > 0)
 	{
-		string fname = "domain4.raw";
-		read_raw<unsigned char>(fname, 0, N[0], N[1], cell_type);
+		string fname = config["domain"]["file"];
+		read_raw<RawType>(fname, 0, N[0], N[1], cell_type);
 	}
 	else
 	{
-		cell_type = make_unique<CellType[]>(trace(N));
+		cell_type = make_unique<RawType[]>(trace(N));
 	}
 
 	vect_t L = N.as<double>()*dx;
@@ -118,6 +152,19 @@ int run_main(int argc, char* argv[])
 	cout << "Tau = " << tau << endl;
 	cout << "N = " << N << " [" << trace(N) << "]" << endl;
 	cout << "L = " << L << endl;
+
+	// load boundaries
+	cout << "Reading boundary config..." << endl;
+	auto velocity_boundary = unordered_map<int, vect_t>();
+	for (auto& c : config["boundaries"].items()) {
+		if (c.value()["type"] == "velocity") {
+			vect_t v = c.value()["vel"].get<std::array<double, Dims>>();
+			int key = std::atoi(c.key().c_str());
+			velocity_boundary[key] = v;
+
+			cout << " " << key  << " -> velocity " << v << endl;
+		}
+	}
 
 	// allocate memory
 	auto f = make_unique<Vect<double, Q>[]>(trace(N));
@@ -137,6 +184,7 @@ int run_main(int argc, char* argv[])
 		int idx = sub2idx(sub, N);
 
 		vect_t v_ = vect_t::zero();
+		vect_t x_ = sub.as<double>() / dx;
 
 		//v_[0] = 0.015*c*cos((sub[1] * dx / L[1] - L[1] * 0.75)*M_PI*2.) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 4) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.15)*M_PI * 6) + 0.01*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 8);
 		//v_[2] = v_[1] = 0.015*c*cos((sub[0] * dx / L[0] - L[0] * 0.25)*M_PI*2.) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.125)*M_PI * 4) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.2)*M_PI * 6) + 0.01*c*cos((sub[0] * dx / L[0] - L[0] * 0.7)*M_PI * 8);
@@ -157,14 +205,28 @@ int run_main(int argc, char* argv[])
 
 		if (cell_type[idx] != Fluid) v_ = vect_t::zero();
 
+		double rho_ = 1.0;
+
+		// if (
+		// 	(sub[0] > Nx * 0.35) && (sub[0] < Nx * 0.625) &&
+		//   (sub[1] > Ny * 0.45) && (sub[1] < Ny * 0.55)
+		//   ) {
+		// 	rho_ = 1.2;
+		// 	// rho_ = 1.0;
+		// 	v_ = {0.0, 0.4};
+		// }
+
+		rho_ *= rho0;
+
 		for (int q = 0; q < Q; ++q)
 		{
-			feq[idx][q] = f[idx][q] = get_feq<the_model>(v_, rho0, c, q);
-			f[idx][q] *= (1 + pert_dist(rng));
+			feq[idx][q] = f[idx][q] = get_feq<the_model>(v_, rho_, c, q);
+			if (cell_type[idx] == Fluid)
+				f[idx][q] *= (1 + pert_dist(rng));
 		}
 
 		v[idx] = v_;
-		rho[idx] = rho0;
+		rho[idx] = rho_;
 	}
 
 	cout << "Done." << endl;
@@ -247,6 +309,7 @@ int run_main(int argc, char* argv[])
 	};
 
 	cout << "Running simulation..." << endl;
+	cout << endl;
 
 	// run the simulation
 	auto then = std::clock();
@@ -261,7 +324,7 @@ int run_main(int argc, char* argv[])
 
 			vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
 
-			{
+			if (output_grid) {
 				// setup arrays and vtkImageData objects
 				vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
 				if (Dims == 2)
@@ -343,7 +406,7 @@ int run_main(int argc, char* argv[])
 			fname.clear();
 			fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
 
-			{
+			if (output_tracers) {
 				vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
 				vtkSmartPointer<vtkCellArray> vertices = vtkSmartPointer<vtkCellArray>::New();
 
@@ -392,17 +455,18 @@ int run_main(int argc, char* argv[])
 					throw runtime_error("Error writing tracers to vtk file!");
 				}
 			}
-
-			auto now = std::clock();
-			cout << iteration / fact << ": " << "time/itr = " << (then-now)*1000 / (fact*CLOCKS_PER_SEC) << " ms\tt = " << iteration *dt << " s" << endl;
-			then = now;
 		}
+
+		auto now = std::clock();
+		cout << iteration << " (" << (int)(iteration / fact) << "): " << "<time/itr> = " << (int)((now-then)*1000.0 / (CLOCKS_PER_SEC * (iteration+1.0))) << " ms\tt = " << iteration * dt << " s\r";
+		cout.flush();
 
 		// stream - use feq as temporary storage
 		for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		{
-			int idx = sub2idx(sub, N);
-			if (cell_type[idx] == Empty) continue;
+			const int idx = sub2idx(sub, N);
+			const RawType type = cell_type[idx];
+			if (type == Empty) continue;
 
 			for (int q = 0; q < Q; ++q)
 			{
@@ -413,7 +477,7 @@ int run_main(int argc, char* argv[])
 				}
 			}
 
-			if (cell_type[idx] == Wall)
+			if (type == Wall)
 			{
 				for (int q = 0; q < Q; ++q)
 				{
@@ -448,12 +512,24 @@ int run_main(int argc, char* argv[])
 		// calculate equilibrium distribution & update f
 		for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		{
-			int idx = sub2idx(sub, N);
-			if (cell_type[idx] == Empty) continue;
+			const int idx = sub2idx(sub, N);
+			const RawType type = cell_type[idx];
+
+			if (type == Empty) continue;
+
+			if (type > Empty) {
+				if (velocity_boundary.count(type) != 0) {
+					vect_t vel = velocity_boundary[type];
+					for (int q=0; q<Q; q++) {
+						feq[idx][q] = f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
+					}
+				}
+				continue;
+			}
 
 			for (int q = 0; q < Q; ++q)
 			{
-				if (cell_type[idx] == Fluid)
+				if (type == Fluid) 
 					feq[idx][q] = get_feq<the_model>(v[idx] + g*tau, rho[idx], c, q);
 				else
 					feq[idx][q] = get_feq<the_model>(v[idx], rho[idx], c, q);
@@ -479,6 +555,8 @@ int run_main(int argc, char* argv[])
 			interp_vel(pos4, v4);
 			pos[i] = periodic(pos[i] + (1. / 6.)*dt*(v1 + 2.*v2 + 2.*v3 + v4), L);
 
+			// TODO: reflect back if end up in wall
+
 			// strictly should be recalculated at the new position but this is for visualization only
 			vel[i] = v1;
 		}
@@ -496,6 +574,11 @@ int main(int argc, char* argv[])
 	catch (runtime_error& e)
 	{
 		cerr << "Runtime error detected in LBSimple:" << endl;
+		cerr << "\t" << e.what() << endl;
+	}
+	catch (exception& e)
+	{
+		cerr << "Exception detected in LBSimple:" << endl;
 		cerr << "\t" << e.what() << endl;
 	}
 }
