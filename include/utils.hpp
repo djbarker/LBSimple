@@ -6,11 +6,9 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <limits>
 #include <unordered_map>
 #include <sys/stat.h>
-
-#include "json.hpp"
-using json = nlohmann::json;
 
 #include "Vect.hpp"
 
@@ -174,5 +172,3 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 		}
 	}
 }
-
-// json::basic_json parse_config(string fname);

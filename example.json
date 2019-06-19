@@ -1,25 +1,23 @@
 {
-	"dx": 0.001,
-	"dt": 0.002,
-	"dt_out": 0.01,
-	"rho0": 100.0,
+	"dx": 0.0003,
+	"dt": 0.000125,
+	"dt_out": 0.05,
+	"dt_max": 15.00,
+	"mu": 0.001,
+	"rho0": 1000.0,
 	"gravity": [0.0, 0.0],
-	"perturbation": 0.5, 
+	"perturbation": 1, 
 
 	"domain": {
 		"file": "../cylinder.data",
-		"size": [400, 200]
+		"size": [800, 400],
+		"periodic": [false, false]
 	},
 	
 	"boundaries": {
 		"3": {
 			"type": "velocity",
-			"vel": [0.1, 0.0]
-		},
-
-		"5": {
-			"type": "velocity",
-			"vel": [0.1, 0.0]
+			"vel": [0.05, 0.0]
 		}
 	},
 

@@ -8,43 +8,24 @@
 #include <random>
 #include <sstream>
 
-#include <vtkCellArray.h>
-#include <vtkDoubleArray.h>
 #include <vtkFileOutputWindow.h>
-#include <vtkIdList.h>
-#include <vtkImageData.h>
-#include <vtkPointData.h>
-#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
-#include <vtkXMLImageDataWriter.h>
-#include <vtkXMLPolyDataWriter.h>
-#include <vtkZLibDataCompressor.h>
 
 #include "json.hpp" // nlohmann
 
+#include "config.hpp"
 #include "utils.hpp"
-#include "Model.hpp"
-
-// select the model
-#define the_model D2Q9
-#define Dims 2
-#define Q 9
-// #define the_model D3Q19
-// #define Dims 3
-// #define Q 19
-
-typedef Vect<double, Dims> vect_t;
-typedef Vect<int, Dims> sub_t;
+#include "vtk.hpp"
 
 using namespace std;
 
-template<ModelType M>
+template<class Model>
 double get_feq(const vect_t& v, double rho, double c, int q)
 {
-	double v_dot_e = dot((Model<M>::Es[q]).template as<double>(), v);
+	double v_dot_e = dot((Model::Es[q]).template as<double>(), v);
 	double v_dot_v = dot(v, v);
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
-	return Model<M>::Ws[q] * rho*(1.0 + s);
+	return Model::Ws[q] * rho*(1.0 + s);
 }
 
 void get_vortex(double x0, double y0, double x, double y, double vx, double vy, double vmax, double sigma, bool clockwise, double Lx, double Ly, double &vxout, double& vyout)
@@ -59,42 +40,7 @@ void get_vortex(double x0, double y0, double x, double y, double vx, double vy, 
 	vyout = -vmax*v*cos(theta)*(clockwise ? 1 : -1) + 2 * exp(-r*r / (sigma*sigma))*vmax*vy;
 }
 
-Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const unique_ptr<Vect<double, 2>[]>& v)
-{
-	Vect<double, 3> curl;
-	curl[2] = v[sub2idx(periodic(sub + Vect<int, 2>{1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{-1, 0}, N), N)][1]
-		    - v[sub2idx(periodic(sub + Vect<int, 2>{0, 1}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 2>{0, -1}, N), N)][0];
-	curl[2] /= 2 * dx;
-
-	return curl;
-}
-
-Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const unique_ptr<Vect<double, 3>[]>& v)
-{
-	Vect<double, 3> curl;
-	curl[2] = v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][1]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][0];
-
-	curl[1] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][0] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][0]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][2] + v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][2];
-
-	curl[0] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][2] - v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][2]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][1] + v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][1];
-	curl /= 2 * dx;
-
-	return curl;
-}
-
-
-#include <json.hpp>
 using json = nlohmann::json;
-json parse_config(string fname) {
-	ifstream i(fname);
-	return json::parse(i);
-}
-
-
-typedef unsigned char RawType;
 
 
 int run_main(int argc, char* argv[])
@@ -108,30 +54,36 @@ int run_main(int argc, char* argv[])
 	auto config = json::parse(ifs);
 	cout << "Read config" << endl;
 
-	// params - hard coded for now
+	// params 
 	double dx = config["dx"];
 	double dt = config["dt"];
-	double dtout = config["dt_out"]; 
+	double dt_out = config["dt_out"]; 
+	double dt_max = config["dt_max"];
 	double rho0 = config["rho0"];
-	double nu = 0.001 / rho0;
+	double mu = config["mu"];
+	double nu = mu / rho0;
 	// vect_t g = { 0.0001, 0.0 };
 	vect_t g = config["gravity"].get<std::array<double, 2>>();
 	double perturbation = config["perturbation"]; // in percent
 
-#if Dims == 2
-	const int Nx = config["domain"]["size"][0];
-	const int Ny = config["domain"]["size"][1];
-	sub_t N = { Nx, Ny };
-#elif Dims == 3
-	const int Nx = config["domain"]["size"][0];
-	const int Ny = config["domain"]["size"][1];
-	const int Nz = config["domain"]["size"][2];
-	sub_t N = { Nx, Ny, Nz };
-#endif
+	sub_t N;
+	if (Dims == 2) {
+		const int Nx = config["domain"]["size"][0];
+		const int Ny = config["domain"]["size"][1];
+		N = { Nx, Ny };
+	}
+	else if (Dims == 3) {
+		const int Nx = config["domain"]["size"][0];
+		const int Ny = config["domain"]["size"][1];
+		const int Nz = config["domain"]["size"][2];
+		N = { Nx, Ny, Nz };
+	} else {
+		throw runtime_error("Unsupported dimension!");
+	}
 
-	double c = dx / dt;
-	double tau = 3. * nu*(1. / (c* dx)) + 0.5;
-	
+	const double c = dx / dt;
+	const double tau = 3. * nu * (1. / (c* dx)) + 0.5;
+
 	const bool output_grid    = config["output"]["grid"]; // can eat lots of space
 	const bool output_tracers = config["output"]["tracers"];
 
@@ -146,15 +98,10 @@ int run_main(int argc, char* argv[])
 		cell_type = make_unique<RawType[]>(trace(N));
 	}
 
-	vect_t L = N.as<double>()*dx;
-
-	cout << "C = " << c << endl;
-	cout << "Tau = " << tau << endl;
-	cout << "N = " << N << " [" << trace(N) << "]" << endl;
-	cout << "L = " << L << endl;
-
 	// load boundaries
 	cout << "Reading boundary config..." << endl;
+	double s_max = 0.0;
+	vect_t v_max;
 	auto velocity_boundary = unordered_map<int, vect_t>();
 	for (auto& c : config["boundaries"].items()) {
 		if (c.value()["type"] == "velocity") {
@@ -163,14 +110,32 @@ int run_main(int argc, char* argv[])
 			velocity_boundary[key] = v;
 
 			cout << " " << key  << " -> velocity " << v << endl;
+
+			if (dot(v, v) > s_max) {
+				s_max = sqrt(dot(v, v));
+				v_max = v;
+			}
 		}
 	}
+
+	vect_t L = N.as<double>()*dx;
+
+	cout << "N = " << N << " [" << trace(N) << "]" << endl;
+	cout << "L = " << L << " m" << endl;
+	cout << "C = " << c << " m/s" << endl;
+	cout << "mu = " << mu << " (dynamic)" << endl;
+	cout << "nu = " << nu << " (kinematic)" << endl;
+	cout << "Tau = " << tau << endl;
+	cout << "Re = " << s_max * L[0] / nu << endl;
+
 
 	// allocate memory
 	auto f = make_unique<Vect<double, Q>[]>(trace(N));
 	auto feq = make_unique<Vect<double, Q>[]>(trace(N));
 	auto v = make_unique<vect_t[]>(trace(N));
 	auto rho = make_unique<double[]>(trace(N));
+	auto id = make_unique<double[]>(trace(N));
+
 
 	mt19937_64 rng(42);
 	uniform_real_distribution<double> pert_dist(-perturbation / 100., perturbation / 100.);
@@ -185,6 +150,8 @@ int run_main(int argc, char* argv[])
 
 		vect_t v_ = vect_t::zero();
 		vect_t x_ = sub.as<double>() / dx;
+
+		v_ = v_max;
 
 		//v_[0] = 0.015*c*cos((sub[1] * dx / L[1] - L[1] * 0.75)*M_PI*2.) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 4) + 0.025*c*cos((sub[1] * dx / L[1] - L[1] * 0.15)*M_PI * 6) + 0.01*c*cos((sub[1] * dx / L[1] - L[1] * 0.5)*M_PI * 8);
 		//v_[2] = v_[1] = 0.015*c*cos((sub[0] * dx / L[0] - L[0] * 0.25)*M_PI*2.) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.125)*M_PI * 4) + 0.025*c*cos((sub[0] * dx / L[0] - L[0] * 0.2)*M_PI * 6) + 0.01*c*cos((sub[0] * dx / L[0] - L[0] * 0.7)*M_PI * 8);
@@ -227,6 +194,7 @@ int run_main(int argc, char* argv[])
 
 		v[idx] = v_;
 		rho[idx] = rho_;
+		id[idx] = idx;
 	}
 
 	cout << "Done." << endl;
@@ -313,147 +281,25 @@ int run_main(int argc, char* argv[])
 
 	// run the simulation
 	auto then = std::clock();
-	int fact = dtout / dt;
-	for (int iteration = 0; iteration < fact * 1000; ++iteration)
+	int fact = dt_out / dt;
+	for (int iteration = 0; iteration * dt <= dt_max; ++iteration)
 	{
 		// write out data files
 		if (iteration % fact == 0)
 		{
-			stringstream fname;
-			fname << "./out/output_" << setw(6) << setfill('0') << iteration / fact << ".vti";
-
-			vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
-
+			
 			if (output_grid) {
-				// setup arrays and vtkImageData objects
-				vtkSmartPointer<vtkImageData> data = vtkSmartPointer<vtkImageData>::New();
-				if (Dims == 2)
-				{
-					data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, 0);
-					data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), 0);
-				}
-				else if (Dims == 3)
-				{
-					data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, N[2] - 1);
-					data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), dx*(N[2])/(N[2]-1));
-				}
-				
-				data->SetOrigin(0, 0, 0);
-
-				vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				rho_arr->SetName("Density");
-				rho_arr->SetNumberOfComponents(1);
-				rho_arr->SetNumberOfTuples(trace(N));
-
-				vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				vel_arr->SetName("Velocity");
-				vel_arr->SetNumberOfComponents(3);
-				vel_arr->SetNumberOfTuples(trace(N));
-
-				vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				curl_arr->SetName("Vorticity");
-				if (Dims==2)
-					curl_arr->SetNumberOfComponents(1);
-				else
-					curl_arr->SetNumberOfComponents(3);
-				curl_arr->SetNumberOfTuples(trace(N));
-
-				vtkSmartPointer<vtkIntArray> type_arr = vtkSmartPointer<vtkIntArray>::New();
-				type_arr->SetName("CellType");
-				type_arr->SetNumberOfComponents(1);
-				type_arr->SetNumberOfTuples(trace(N));
-
-				vtkPointData* pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
-				pdata->AddArray(vel_arr);
-				pdata->AddArray(rho_arr);
-				pdata->AddArray(curl_arr);
-				pdata->AddArray(type_arr);
-				pdata->SetActiveAttribute("Velocity", vtkDataSetAttributes::VECTORS);
-
-				for (sub_t sub; sub != raster_end(N); raster(sub, N))
-				{
-					int idx = sub2idx(sub, N);
-					Vect<double, 3> curl = calculate_curl(sub, N, dx, v);
-					
-					type_arr->SetTuple1(idx, cell_type[idx]);
-					rho_arr->SetTuple1(idx, rho[idx]);
-					if (Dims == 2)
-					{
-						vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], 0.0);
-						curl_arr->SetTuple1(idx, curl[2]);
-					}
-					else
-					{
-						vel_arr->SetTuple3(idx, v[idx][0], v[idx][1], v[idx][2]);
-						curl_arr->SetTuple3(idx, curl[0], curl[1], curl[2]);
-					}
-				}
-
-				vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
-
-				writer->SetDataModeToBinary();
-				writer->SetFileName(fname.str().c_str());
-				writer->SetInputData(data);
-				writer->SetCompressor(compressor);
-
-				if (!writer->Write())
-				{
-					throw runtime_error("Error writing imagedata to vtk file!");
-				}
+				stringstream fname;
+				fname << "./out/output_" << setw(6) << setfill('0') << iteration / fact << ".vti";
+				write_grid(fname.str(), dx, N, cell_type, v, rho);
 			}
 
-			fname.str("");
-			fname.clear();
-			fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
+			
 
 			if (output_tracers) {
-				vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
-				vtkSmartPointer<vtkCellArray> vertices = vtkSmartPointer<vtkCellArray>::New();
-
-				vtkSmartPointer<vtkDoubleArray> vel_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				vel_arr->SetName("Velocity");
-				vel_arr->SetNumberOfComponents(3);
-				vel_arr->SetNumberOfTuples(num_tracers);
-
-				vtkSmartPointer<vtkDoubleArray> id_arr = vtkSmartPointer<vtkDoubleArray>::New();
-				id_arr->SetName("Id");
-				id_arr->SetNumberOfComponents(1);
-				id_arr->SetNumberOfTuples(num_tracers);
-
-				for (int i = 0; i < num_tracers; ++i)
-				{
-					if (Dims == 2)
-					{
-						points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
-						vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
-					}
-					else
-					{
-						points->InsertNextPoint(pos[i][0], pos[i][1], pos[i][2]);
-						vel_arr->SetTuple3(i, vel[i][0], vel[i][1], vel[i][2]);
-					}
-					
-					id_arr->SetTuple1(i, ids[i]);
-					vtkIdType id[1] = { i };
-					vertices->InsertNextCell(1, id);
-				}
-
-				vtkSmartPointer<vtkPolyData> polydata = vtkSmartPointer<vtkPolyData>::New();
-				polydata->Allocate(num_tracers);
-				polydata->SetPoints(points);
-				polydata->SetVerts(vertices);
-				polydata->GetPointData()->AddArray(vel_arr);
-				polydata->GetPointData()->AddArray(id_arr);
-
-				vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-				writer->SetFileName(fname.str().c_str());
-				writer->SetInputData(polydata);
-				writer->SetCompressor(compressor);
-
-				if (!writer->Write())
-				{
-					throw runtime_error("Error writing tracers to vtk file!");
-				}
+				stringstream fname;
+				fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
+				write_tracers(fname.str(), num_tracers, pos, vel, id);
 			}
 		}
 
@@ -470,7 +316,7 @@ int run_main(int argc, char* argv[])
 
 			for (int q = 0; q < Q; ++q)
 			{
-				int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
+				int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
 				if (cell_type[neighbour_idx] == Fluid)
 				{
 					feq[neighbour_idx][q] = f[idx][q];
@@ -481,10 +327,10 @@ int run_main(int argc, char* argv[])
 			{
 				for (int q = 0; q < Q; ++q)
 				{
-					int neighbour_idx = sub2idx(periodic(sub + Model<the_model>::Es[q], N), N);
+					int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
 					if (cell_type[neighbour_idx] != Fluid)
 					{
-						feq[idx][Model<the_model>::Qneg[q]] = f[idx][q];
+						feq[idx][the_model::Qneg[q]] = f[idx][q];
 					}
 				}
 			}
@@ -504,7 +350,7 @@ int run_main(int argc, char* argv[])
 			v[idx] = { 0.0, 0.0 };
 			for (int q = 0; q < Q; ++q)
 			{
-				v[idx] += (Model<the_model>::Es[q]).as<double>() * f[idx][q];
+				v[idx] += (the_model::Es[q]).as<double>() * f[idx][q];
 			}
 			v[idx] *= c / rho[idx];
 		}
@@ -522,6 +368,7 @@ int run_main(int argc, char* argv[])
 					vect_t vel = velocity_boundary[type];
 					for (int q=0; q<Q; q++) {
 						feq[idx][q] = f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
+						f[idx][q] *= (1 + pert_dist(rng)); // perturb 
 					}
 				}
 				continue;
