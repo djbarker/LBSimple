@@ -1,16 +1,16 @@
 {
 	"dx": 0.0003,
 	"dt": 0.000125,
-	"dt_out": 0.05,
-	"dt_max": 15.00,
+	"dt_out": 0.025,
+	"dt_max": 6.0,
 	"mu": 0.001,
 	"rho0": 1000.0,
 	"gravity": [0.0, 0.0],
-	"perturbation": 1, 
+	"perturbation": 0, 
 
 	"domain": {
-		"file": "../cylinder.data",
-		"size": [800, 400],
+		"file": "./cylinder.data",
+		"size": [400, 200],
 		"periodic": [false, false]
 	},
 	
