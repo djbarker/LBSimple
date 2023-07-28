@@ -10,4 +10,4 @@ using grid_double_t = std::unique_ptr<double[]>;
 using grid_cell_t = std::unique_ptr<RawType[]>;
 
 void write_grid(std::string fname, double dx, sub_t N, grid_cell_t& cell_type, grid_vect_t& v, grid_double_t& rho);
-void write_tracers(std::string fname, size_t num_tracers, grid_vect_t& pos, grid_vect_t& vel, grid_double_t& id);
+void write_tracers(std::string fname, size_t num_tracers, grid_vect_t& pos, grid_vect_t& vel, grid_double_t& id, grid_vect_t& pos_init, grid_double_t& colour);
