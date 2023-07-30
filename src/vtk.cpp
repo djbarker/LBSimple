@@ -124,7 +124,7 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	}
 }
 
-void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect_t& vel, grid_double_t& ids, grid_vect_t& pos_init, grid_double_t& colour) {
+void write_tracers(string fname, size_t num_tracers, vector<vect_t>& pos, vector<vect_t>& vel, vector<double>& ids, vector<vect_t>& pos_init, vector<double>& colour) {
 
 	vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
 
@@ -156,16 +156,17 @@ void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect
 		if (Dims == 2)
 		{
 			points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
-			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
+			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);		
+			pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], 0.0);
 		}
 		else
 		{
 			points->InsertNextPoint(pos[i][0], pos[i][1], pos[i][2]);
 			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], vel[i][2]);
+			pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], pos_init[i][2]);
 		}
 		
 		id_arr->SetTuple1(i, ids[i]);
-		pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], pos_init[i][2]);
 		colour_arr->SetTuple1(i, colour[i]);
 		vtkIdType id[1] = { i };
 		vertices->InsertNextCell(1, id);

@@ -57,6 +57,22 @@ Vect<T, D> periodic(Vect<T, D> idx, Vect<T, D> period)
 	return out;
 }
 
+template<class T>
+T periodic_delta(T delta, T period) {
+	if (delta < -0.5*period) delta += period;
+	else if (delta >= 0.5 * period) delta -= period;
+	return delta;
+}
+
+template<class T, size_t D>
+Vect<T, D> periodic_delta(Vect<T, D> delta, Vect<T, D> period) {
+	Vect<T, D> out;
+	for (int d = 0; d < D; ++d) {
+		out[d] = periodic_delta(delta[d], period[d]);
+	}
+	return out;
+}
+
 template<size_t D>
 void raster(Vect<int, D>& sub, const Vect<int, D>& extent)
 {
