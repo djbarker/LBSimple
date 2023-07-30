@@ -5,15 +5,22 @@ using namespace std;
 template<>
 int sub2idx<2>(const Vect<int, 2>& sub, const Vect<int, 2>& extent)
 {
-	return sub[0] + sub[1]*extent[0];
+	return sub2idx_2d(sub[0], sub[1], extent);
+}
+
+int sub2idx_2d(int subx, int suby, const Vect<int, 2>& extent) {
+	return subx + suby*extent[0];
 }
 
 template<>
 int sub2idx<3>(const Vect<int, 3>& sub, const Vect<int, 3>& extent)
 {
-	return sub[0] + sub[1] * extent[1] + sub[2] * extent[0] * extent[1];
+	return sub2idx_3d(sub[0], sub[1], sub[2], extent);
 }
 
+int sub2idx_3d(int subx, int suby, int subz, const Vect<int, 3>& extent) {
+	return subx + suby * extent[1] + subz * extent[0] * extent[1];
+}
 
 template<>
 Vect<int, 2> idx2sub<2>(size_t idx, const Vect<int, 2>& extent)

@@ -235,10 +235,10 @@ int run_main(int argc, char* argv[])
 	auto interp_vel = [&](vect_t x, vect_t& v_){
 // #if Dims==2
 			auto idx = (x / dx).as<int>();
-			int idx00 = sub2idx(idx, N);
-			int idx10 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), idx[1] }, N);
-			int idx01 = sub2idx(sub_t{ idx[0], periodic(idx[1] + 1, N[1]) }, N);
-			int idx11 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]) }, N);
+			int idx00 = sub2idx_2d(idx[0], idx[1], N);
+			int idx10 = sub2idx_2d(periodic(idx[0] + 1, N[0]), idx[1], N);
+			int idx01 = sub2idx_2d(idx[0], periodic(idx[1] + 1, N[1]), N);
+			int idx11 = sub2idx_2d(periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]), N);
 
 			v_ = bilinear_interp(x, (idx).as<double>()*dx, dx, v[idx00], v[idx10], v[idx01], v[idx11]);
 // #elif Dims==3
@@ -258,6 +258,8 @@ int run_main(int argc, char* argv[])
 
 	cout << "Running simulation..." << endl;
 	cout << endl;
+
+	const int num_cells = trace(N);
 
 	// run the simulation
 	auto then = std::clock();
@@ -285,9 +287,9 @@ int run_main(int argc, char* argv[])
 		cout.flush();
 
 		// stream - use feq as temporary storage
-		for (sub_t sub; sub != raster_end(N); raster(sub, N))
+		int idx = 0; // raster goes in the same direction as sub2idx
+		for (sub_t sub; sub != raster_end(N); raster(sub, N), idx++)
 		{
-			const int idx = sub2idx(sub, N);
 			const RawType type = cell_type[idx];
 			if (type == Empty) continue;
 
@@ -315,9 +317,10 @@ int run_main(int argc, char* argv[])
 		std::swap(f, feq);
 
 		// calc macroscopic properties
-		for (sub_t sub; sub != raster_end(N); raster(sub, N))
+		// for (sub_t sub; sub != raster_end(N); raster(sub, N))
+		for (int idx = 0; idx < num_cells; ++idx)
 		{
-			int idx = sub2idx(sub, N);
+			// int idx = sub2idx(sub, N);
 			if (cell_type[idx] == Empty) continue;
 
 			rho[idx] = 0.0;
@@ -333,20 +336,19 @@ int run_main(int argc, char* argv[])
 		}
 
 		// calculate equilibrium distribution & update f
-		for (sub_t sub; sub != raster_end(N); raster(sub, N))
+		// for (sub_t sub; sub != raster_end(N); raster(sub, N))
+		for (int idx = 0; idx < num_cells; ++idx)
 		{
-			const int idx = sub2idx(sub, N);
+			// const int idx = sub2idx(sub, N);
 			const RawType type = cell_type[idx];
 
 			if (type == Empty) continue;
 
 			if (type > Empty) {
-				if (velocity_boundary.count(type) != 0) {
-					vect_t vel = velocity_boundary[type];
-					for (int q=0; q<Q; q++) {
-						feq[idx][q] = f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
-						f[idx][q] *= (1 + pert_dist(rng)); // perturb 
-					}
+				vect_t vel = velocity_boundary[type];
+				for (int q=0; q<Q; q++) {
+					feq[idx][q] = f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
+					// f[idx][q] *= (1 + pert_dist(rng)); // perturb 
 				}
 				continue;
 			}
@@ -363,26 +365,28 @@ int run_main(int argc, char* argv[])
 		}
 
 		// advect tracers using RK4 integration
-		for (int i = 0; i < num_tracers; ++i)
-		{
-			vect_t v1, v2, v3, v4;
+		if (output_tracers) {
+			for (int i = 0; i < num_tracers; ++i)
+			{
+				vect_t v1, v2, v3, v4;
 
-			interp_vel(pos[i], v1);
-			auto pos2 = periodic(pos[i] + 0.5*dt*v1, L);
+				interp_vel(pos[i], v1);
+				auto pos2 = periodic(pos[i] + 0.5*dt*v1, L);
 
-			interp_vel(pos2, v2);
-			auto pos3 = periodic(pos[i] + 0.5*dt*v2, L);
+				interp_vel(pos2, v2);
+				auto pos3 = periodic(pos[i] + 0.5*dt*v2, L);
 
-			interp_vel(pos3, v3);
-			auto pos4 = periodic(pos[i] + dt*v3, L);
+				interp_vel(pos3, v3);
+				auto pos4 = periodic(pos[i] + dt*v3, L);
 
-			interp_vel(pos4, v4);
-			pos[i] = periodic(pos[i] + (1. / 6.)*dt*(v1 + 2.*v2 + 2.*v3 + v4), L);
+				interp_vel(pos4, v4);
+				pos[i] = periodic(pos[i] + (1. / 6.)*dt*(v1 + 2.*v2 + 2.*v3 + v4), L);
 
-			// TODO: reflect back if end up in wall
+				// TODO: reflect back if end up in wall
 
-			// strictly should be recalculated at the new position but this is for visualization only
-			vel[i] = v1;
+				// strictly should be recalculated at the new position but this is for visualization only
+				vel[i] = v1;
+			}
 		}
 	}
 
