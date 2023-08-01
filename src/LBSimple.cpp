@@ -133,7 +133,7 @@ int run_main(int argc, char* argv[])
 
 	// allocate memory
 	auto f = vector<Vect<double, Q>>(trace(N));
-	auto feq = vector<Vect<double, Q>>(trace(N));
+	auto ftmp = vector<Vect<double, Q>>(trace(N));
 	auto v = vector<vect_t>(trace(N));
 	auto rho = vector<double>(trace(N));
 
@@ -186,9 +186,10 @@ int run_main(int argc, char* argv[])
 
 		rho_ *= rho0;
 
+		# pragma GCC unroll 20
 		for (int q = 0; q < Q; ++q)
 		{
-			feq[idx][q] = f[idx][q] = get_feq<the_model>(v_, rho_, c, q);
+			f[idx][q] = get_feq<the_model>(v_, rho_, c, q);
 			if (cell_type[idx] == Fluid)
 				f[idx][q] *= (1 + pert_dist(rng));
 		}
@@ -293,28 +294,30 @@ int run_main(int argc, char* argv[])
 			const RawType type = cell_type[idx];
 			if (type == Empty) continue;
 
+		# pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 			{
 				int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
 				if (cell_type[neighbour_idx] == Fluid)
 				{
-					feq[neighbour_idx][q] = f[idx][q];
+					ftmp[neighbour_idx][q] = f[idx][q];
 				}
 			}
 
 			if (type == Wall)
 			{
+		# pragma GCC unroll 20
 				for (int q = 0; q < Q; ++q)
 				{
 					int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
 					if (cell_type[neighbour_idx] != Fluid)
 					{
-						feq[idx][the_model::Qneg[q]] = f[idx][q];
+						ftmp[idx][the_model::Qneg[q]] = f[idx][q];
 					}
 				}
 			}
 		}
-		std::swap(f, feq);
+		std::swap(f, ftmp);
 
 		// calc macroscopic properties
 		// for (sub_t sub; sub != raster_end(N); raster(sub, N))
@@ -328,6 +331,7 @@ int run_main(int argc, char* argv[])
 				rho[idx] += f[idx][q];
 
 			v[idx] = { 0.0, 0.0 };
+		# pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 			{
 				v[idx] += (the_model::Es[q]).as<double>() * f[idx][q];
@@ -346,21 +350,24 @@ int run_main(int argc, char* argv[])
 
 			if (type > Empty) {
 				vect_t vel = velocity_boundary[type];
+		# pragma GCC unroll 20
 				for (int q=0; q<Q; q++) {
-					feq[idx][q] = f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
+					f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
 					// f[idx][q] *= (1 + pert_dist(rng)); // perturb 
 				}
 				continue;
 			}
 
+		# pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 			{
+				double feq;
 				if (type == Fluid) 
-					feq[idx][q] = get_feq<the_model>(v[idx] + g*tau, rho[idx], c, q);
+					feq = get_feq<the_model>(v[idx] + g*tau, rho[idx], c, q);
 				else
-					feq[idx][q] = get_feq<the_model>(v[idx], rho[idx], c, q);
+					feq = get_feq<the_model>(v[idx], rho[idx], c, q);
 
-				f[idx][q] = f[idx][q] - (1. / tau)*(f[idx][q] - feq[idx][q]);
+				f[idx][q] = f[idx][q] - (1. / tau)*(f[idx][q] - feq);
 			}
 		}
 
