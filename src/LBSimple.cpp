@@ -89,15 +89,15 @@ int run_main(int argc, char* argv[])
 	const bool output_grid    = config["output"]["grid"]; // can eat lots of space
 	const bool output_tracers = config["output"]["tracers"];
 
-	unique_ptr<RawType[]> cell_type;
+	vector<RawType> cell_type;
 	if (Dims == 2 && config["domain"].count("file") > 0)
 	{
 		string fname = config["domain"]["file"];
-		read_raw<RawType>(fname, 0, N[0], N[1], cell_type);
+		cell_type = read_raw<RawType>(fname, 0, N[0], N[1]);
 	}
 	else
 	{
-		cell_type = make_unique<RawType[]>(trace(N));
+		cell_type = vector<RawType>(trace(N));
 	}
 
 	// load boundaries
@@ -132,10 +132,10 @@ int run_main(int argc, char* argv[])
 
 
 	// allocate memory
-	auto f = make_unique<Vect<double, Q>[]>(trace(N));
-	auto feq = make_unique<Vect<double, Q>[]>(trace(N));
-	auto v = make_unique<vect_t[]>(trace(N));
-	auto rho = make_unique<double[]>(trace(N));
+	auto f = vector<Vect<double, Q>>(trace(N));
+	auto feq = vector<Vect<double, Q>>(trace(N));
+	auto v = vector<vect_t>(trace(N));
+	auto rho = vector<double>(trace(N));
 
 
 	mt19937_64 rng(42);

@@ -9,6 +9,7 @@
 #include <limits>
 #include <unordered_map>
 #include <sys/stat.h>
+#include <vector>
 
 #include "Vect.hpp"
 
@@ -130,7 +131,7 @@ T trilinear_interp(Vect<double, 3> x, Vect<double, 3> x0, double dx, T f000, T f
 }
 
 template<class T>
-void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::unique_ptr<T[]>& ptr)
+std::vector<T> read_raw(const std::string& fname, size_t header, int Nx, int Ny)
 {
 	// check size of file matches
 	struct stat filestatus;
@@ -144,7 +145,7 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 		throw std::runtime_error(msg.str());
 	}
 
-	ptr = std::make_unique<T[]>(Nx*Ny);
+	auto out = std::vector<T>(Nx*Ny);
 
 	ifstream fin;
 	fin.open(fname.c_str());
@@ -164,7 +165,7 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 		} else if (tmp == 0) {
 			tmp = Wall;
 		}
-		ptr[sub2idx(Vect<int, 2>{i, Ny - j - 1}, N)] = tmp;
+		out[sub2idx(Vect<int, 2>{i, Ny - j - 1}, N)] = tmp;
 
 		if (counts.count((int)tmp) == 0) {
 			counts[(int)tmp] = 1;
@@ -187,8 +188,10 @@ void read_raw(const std::string& fname, size_t header, int Nx, int Ny, std::uniq
 			int idx = sub2idx(Vect<int, 2>{i, j}, N);
 			int nidx = sub2idx(periodic(Vect<int, 2>{i + di, j + dj}, N), N);
 			
-			if (ptr[idx] == Empty && ptr[nidx] == Fluid)
-				ptr[idx] = Wall;
+			if (out[idx] == Empty && out[nidx] == Fluid)
+				out[idx] = Wall;
 		}
 	}
+
+	return out;
 }
