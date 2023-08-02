@@ -232,7 +232,7 @@ Vect<T, D> cum_trace(const Vect<T, D>& v)
 template<class T, size_t D>
 T trace(const Vect<T, D>& v)
 {
-	T out = v[0]
+	T out = v[0];
 	for (size_t i = 1; i < D; ++i)
 		out *= v[i];
 	return out;
