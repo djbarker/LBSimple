@@ -33,6 +33,7 @@ void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, 
     double r_pois = sqrt(L[0] * L[1] / num_tracers) / 1.3;
     double dx_pois = r_pois / sqrt(2.0);
 	sub_t N_pois = (L / dx_pois).as<int>();
+    sub_t M_pois = cum_trace(N_pois);
 	int k_pois = 50;
 
 	auto rng = mt19937_64(1);
@@ -49,7 +50,7 @@ void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, 
     // func for adding points to the data structures
     auto add_point = [&](vect_t x) {
         active_idx.push_back(pos.size());
-        grid_idx[sub2idx((x/dx_pois).as<int>(), N_pois)] = pos.size();
+        grid_idx[sub2idx((x/dx_pois).as<int>(), M_pois)] = pos.size();
         pos.push_back(x);
     };
 
@@ -76,7 +77,7 @@ void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, 
 
             pos2 = periodic(pos2, L);
             sub_t sub2 = (pos2/dx_pois).as<int>();
-            int idx2 = sub2idx(sub2, N_pois);
+            int idx2 = sub2idx(sub2, M_pois);
 
             // NOTE: If Lx and Ly were exactly divisible by r_pois, then this would not happen.
             if (grid_idx[idx2] >= 0) {
@@ -84,7 +85,7 @@ void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, 
             }
 
             // check valid point - cell type
-            auto type = cell_type[sub2idx((pos2/dx).as<int>(), N)];
+            auto type = cell_type[sub2idx((pos2/dx).as<int>(), cum_trace(N))];
             if (type == Empty || type == Wall) {
                 continue;
             }
@@ -96,7 +97,7 @@ void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, 
                     sub_t sub3 = sub2 + sub_t { ix, iy };
                     sub3 = periodic(sub3, N_pois);
 
-                    int idx3 = sub2idx(sub3, N_pois);
+                    int idx3 = sub2idx(sub3, M_pois);
                     idx3 = grid_idx[idx3];
 
                     if (idx3 >= 0) {

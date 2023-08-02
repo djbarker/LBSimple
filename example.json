@@ -2,7 +2,7 @@
 	"dx": 0.0003,
 	"dt": 0.000125,
 	"dt_out": 0.025,
-	"dt_max": 6.0,
+	"dt_max": 6,
 	"mu": 0.001,
 	"rho0": 1000.0,
 	"gravity": [0.0, 0.0],
@@ -23,6 +23,6 @@
 
 	"output": {
 		"grid": true,
-		"tracers": true
+		"tracers": false
 	}
 }

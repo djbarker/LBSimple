@@ -22,10 +22,9 @@
 using namespace std;
 
 template<class Model>
-double get_feq(const vect_t& v, double rho, double c, int q)
+double get_feq(const vect_t& v, double v_dot_v, double rho, double c, int q)
 {
 	double v_dot_e = dot((Model::Es[q]).template as<double>(), v);
-	double v_dot_v = dot(v, v);
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
 	return Model::Ws[q] * rho*(1.0 + s);
 }
@@ -82,6 +81,9 @@ int run_main(int argc, char* argv[])
 	} else {
 		throw runtime_error("Unsupported dimension!");
 	}
+
+	// For the sub2idx we want the cumulative product extents so just compute it once to avoid lots of 
+	sub_t M = N; //cum_trace(N);
 
 	const double c = dx / dt;
 	const double tau = 3. * nu * (1. / (c* dx)) + 0.5;
@@ -145,10 +147,9 @@ int run_main(int argc, char* argv[])
 	cout.flush();
 
 	// initialize arrays
-	for (sub_t sub; sub != raster_end(N); raster(sub, N))
+	int idx = 0;
+	for (sub_t sub; sub != raster_end(N); raster(sub, N), idx++)
 	{
-		int idx = sub2idx(sub, N);
-
 		vect_t v_ = vect_t::zero();
 		vect_t x_ = sub.as<double>() / dx;
 
@@ -186,10 +187,11 @@ int run_main(int argc, char* argv[])
 
 		rho_ *= rho0;
 
-		# pragma GCC unroll 20
+		double v_dot_v = dot(v_, v_);
+		// # pragma GCC unroll 20
 		for (int q = 0; q < Q; ++q)
 		{
-			f[idx][q] = get_feq<the_model>(v_, rho_, c, q);
+			f[idx][q] = get_feq<the_model>(v_, v_dot_v, rho_, c, q);
 			if (cell_type[idx] == Fluid)
 				f[idx][q] *= (1 + pert_dist(rng));
 		}
@@ -221,7 +223,7 @@ int run_main(int argc, char* argv[])
 	num_tracers = pos.size();
 	int i = 0;
 	for (vect_t x : pos) {
-		int idx = sub2idx((x / dx).as<int>(), N);
+		int idx = sub2idx((x / dx).as<int>(), M);
 		vel.push_back(v[idx]);
 		pos_init.push_back(x);
 		ids.push_back(i);
@@ -236,10 +238,10 @@ int run_main(int argc, char* argv[])
 	auto interp_vel = [&](vect_t x, vect_t& v_){
 // #if Dims==2
 			auto idx = (x / dx).as<int>();
-			int idx00 = sub2idx_2d(idx[0], idx[1], N);
-			int idx10 = sub2idx_2d(periodic(idx[0] + 1, N[0]), idx[1], N);
-			int idx01 = sub2idx_2d(idx[0], periodic(idx[1] + 1, N[1]), N);
-			int idx11 = sub2idx_2d(periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]), N);
+			int idx00 = sub2idx_2d(idx[0], idx[1], M);
+			int idx10 = sub2idx_2d(periodic(idx[0] + 1, N[0]), idx[1], M);
+			int idx01 = sub2idx_2d(idx[0], periodic(idx[1] + 1, N[1]), M);
+			int idx11 = sub2idx_2d(periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]), M);
 
 			v_ = bilinear_interp(x, (idx).as<double>()*dx, dx, v[idx00], v[idx10], v[idx01], v[idx11]);
 // #elif Dims==3
@@ -294,10 +296,10 @@ int run_main(int argc, char* argv[])
 			const RawType type = cell_type[idx];
 			if (type == Empty) continue;
 
-		# pragma GCC unroll 20
+			// # pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 			{
-				int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
+				int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), M);
 				if (cell_type[neighbour_idx] == Fluid)
 				{
 					ftmp[neighbour_idx][q] = f[idx][q];
@@ -306,10 +308,10 @@ int run_main(int argc, char* argv[])
 
 			if (type == Wall)
 			{
-		# pragma GCC unroll 20
+				// # pragma GCC unroll 20
 				for (int q = 0; q < Q; ++q)
 				{
-					int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), N);
+					int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), M);
 					if (cell_type[neighbour_idx] != Fluid)
 					{
 						ftmp[idx][the_model::Qneg[q]] = f[idx][q];
@@ -320,13 +322,12 @@ int run_main(int argc, char* argv[])
 		std::swap(f, ftmp);
 
 		// calc macroscopic properties
-		// for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		for (int idx = 0; idx < num_cells; ++idx)
 		{
-			// int idx = sub2idx(sub, N);
 			if (cell_type[idx] == Empty) continue;
 
 			rho[idx] = 0.0;
+			// # pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 				rho[idx] += f[idx][q];
 
@@ -340,33 +341,36 @@ int run_main(int argc, char* argv[])
 		}
 
 		// calculate equilibrium distribution & update f
-		// for (sub_t sub; sub != raster_end(N); raster(sub, N))
 		for (int idx = 0; idx < num_cells; ++idx)
 		{
-			// const int idx = sub2idx(sub, N);
 			const RawType type = cell_type[idx];
 
 			if (type == Empty) continue;
 
 			if (type > Empty) {
 				vect_t vel = velocity_boundary[type];
-		# pragma GCC unroll 20
+				double v_dot_v = dot(vel, vel);
+
+				// # pragma GCC unroll 20
 				for (int q=0; q<Q; q++) {
-					f[idx][q] = get_feq<the_model>(vel, rho0, c, q);
+					f[idx][q] = get_feq<the_model>(vel, v_dot_v, rho0, c, q);
 					// f[idx][q] *= (1 + pert_dist(rng)); // perturb 
 				}
 				continue;
 			}
+	
+			vect_t vv = v[idx];
+			
+			if (type == Fluid) {
+				vv += g*tau;
+			}
 
-		# pragma GCC unroll 20
+			double v_dot_v = dot(vv, vv);
+
+			// # pragma GCC unroll 20
 			for (int q = 0; q < Q; ++q)
 			{
-				double feq;
-				if (type == Fluid) 
-					feq = get_feq<the_model>(v[idx] + g*tau, rho[idx], c, q);
-				else
-					feq = get_feq<the_model>(v[idx], rho[idx], c, q);
-
+				double feq = get_feq<the_model>(vv, v_dot_v, rho[idx], c, q);
 				f[idx][q] = f[idx][q] - (1. / tau)*(f[idx][q] - feq);
 			}
 		}

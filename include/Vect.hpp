@@ -39,6 +39,12 @@ public:
 		}
 	}
 
+	Vect(T v) {
+		for (int i = 0; i < D; ++i) {
+			components[i] = v;
+		}
+	}
+
 	~Vect()
 	{
 	}
@@ -213,9 +219,20 @@ T dot(const Vect<T, D>& a, const Vect<T, D>& b)
 }
 
 template<class T, size_t D>
+Vect<T, D> cum_trace(const Vect<T, D>& v)
+{
+	Vect<T, D> out;
+	out[0] = v[0];
+	for (size_t d = 1; d < D; ++d) {
+		out[d] = v[d] * out[d-1];
+	}
+	return out;
+}
+
+template<class T, size_t D>
 T trace(const Vect<T, D>& v)
 {
-	T out = v[0];
+	T out = v[0]
 	for (size_t i = 1; i < D; ++i)
 		out *= v[i];
 	return out;
