@@ -8,9 +8,11 @@ enum ModelType
 	D3Q19
 };
 
-template<ModelType M> struct Model;
+template <ModelType M>
+struct Model;
 
-template<> struct Model<D2Q9> 
+template <>
+struct Model<D2Q9>
 {
 	static const int Dim = 2;
 	static const int Q = 9;
@@ -19,7 +21,8 @@ template<> struct Model<D2Q9>
 	static const double Ws[9];
 };
 
-template<> struct Model<D3Q19>
+template <>
+struct Model<D3Q19>
 {
 	static const int Dim = 3;
 	static const int Q = 19;

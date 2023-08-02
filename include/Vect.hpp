@@ -5,15 +5,15 @@
 #include <initializer_list>
 #include <iostream>
 
-/** 
+/**
  * Thin wrapper for std::array with vector addition, etc.
  */
-template<class T, size_t D>
+template <class T, size_t D>
 class Vect
 {
 public:
-
-	template<class S, size_t E> friend class Vect;
+	template <class S, size_t E>
+	friend class Vect;
 
 	/*Vect() = default;
 	Vect(const Vect<T, D>&) = default; // This confuses MSCV since we have a non const copy constructor below.
@@ -28,19 +28,23 @@ public:
 			components[i] = (T)0;
 	}
 
-	Vect(const Vect<T, D>& v)
+	Vect(const Vect<T, D> &v)
 	{
 		components = v.components;
 	}
 
-	Vect(const std::array<T, D>& v) {
-		for (int i = 0; i < D; ++i) {
+	Vect(const std::array<T, D> &v)
+	{
+		for (int i = 0; i < D; ++i)
+		{
 			components[i] = v[i];
 		}
 	}
 
-	Vect(T v) {
-		for (int i = 0; i < D; ++i) {
+	Vect(T v)
+	{
+		for (int i = 0; i < D; ++i)
+		{
 			components[i] = v;
 		}
 	}
@@ -49,7 +53,7 @@ public:
 	{
 	}
 
-	Vect<T, D>& operator=(const Vect<T, D>& v)
+	Vect<T, D> &operator=(const Vect<T, D> &v)
 	{
 		if (&v != this)
 		{
@@ -57,7 +61,7 @@ public:
 		}
 		return *this;
 	}
-	
+
 	Vect(std::initializer_list<T> list)
 	{
 		assert(list.size() == D && "Incorrectly sized initializer_list provided to Vect<T,D>!");
@@ -69,7 +73,7 @@ public:
 		}
 	}
 
-	/* 
+	/*
 	// stop the variadic template constructor hiding copy constructor for non-const objects
 	Vect(Vect<T, D>& v)
 		:Vect<T, D>(const_cast<const Vect<T,D>&>(v))
@@ -83,7 +87,7 @@ public:
 	}
 	*/
 
-	template<class S>
+	template <class S>
 	Vect<S, D> as() const
 	{
 		Vect<S, D> out;
@@ -92,27 +96,27 @@ public:
 		return out;
 	}
 
-	T& operator[] (size_t i)
+	T &operator[](size_t i)
 	{
 		return components[i];
 	}
 
-	const T& operator[] (size_t i) const
+	const T &operator[](size_t i) const
 	{
 		return components[i];
 	}
 
-	bool operator==(const Vect<T, D>& v) const
+	bool operator==(const Vect<T, D> &v) const
 	{
 		return components == v.components;
 	}
 
-	bool operator!=(const Vect<T, D>& v) const
+	bool operator!=(const Vect<T, D> &v) const
 	{
 		return !(*this == v);
 	}
 
-	Vect<T, D> operator+(const Vect<T, D>& v) const
+	Vect<T, D> operator+(const Vect<T, D> &v) const
 	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
@@ -120,7 +124,7 @@ public:
 		return out;
 	}
 
-	Vect<T, D> operator-(const Vect<T, D>& v) const
+	Vect<T, D> operator-(const Vect<T, D> &v) const
 	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
@@ -128,28 +132,30 @@ public:
 		return out;
 	}
 
-	Vect<T, D> operator* (const Vect<T, D>& v) const {
+	Vect<T, D> operator*(const Vect<T, D> &v) const
+	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
 			out.components[i] = components[i] * v.components[i];
 		return out;
 	}
 
-	Vect<T, D> operator/ (const Vect<T, D>& v) const {
+	Vect<T, D> operator/(const Vect<T, D> &v) const
+	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
 			out.components[i] = components[i] / v.components[i];
 		return out;
 	}
 
-	Vect<T, D>& operator+=(const Vect<T, D>& v)
+	Vect<T, D> &operator+=(const Vect<T, D> &v)
 	{
 		for (size_t i = 0; i < D; ++i)
 			components[i] += v.components[i];
 		return *this;
 	}
 
-	Vect<T, D>& operator-=(const Vect<T, D>& v)
+	Vect<T, D> &operator-=(const Vect<T, D> &v)
 	{
 		for (size_t i = 0; i < D; ++i)
 			components[i] -= v.components[i];
@@ -160,7 +166,7 @@ public:
 	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
-			out.components[i] = a*components[i];
+			out.components[i] = a * components[i];
 		return out;
 	}
 
@@ -168,18 +174,18 @@ public:
 	{
 		Vect<T, D> out;
 		for (size_t i = 0; i < D; ++i)
-			out.components[i] = components[i]/a;
+			out.components[i] = components[i] / a;
 		return out;
 	}
 
-	Vect<T, D>& operator *= (T a)
+	Vect<T, D> &operator*=(T a)
 	{
 		for (size_t i = 0; i < D; ++i)
 			components[i] *= a;
 		return *this;
 	}
 
-	Vect<T, D>& operator /= (T a)
+	Vect<T, D> &operator/=(T a)
 	{
 		for (size_t i = 0; i < D; ++i)
 			components[i] /= a;
@@ -203,14 +209,14 @@ private:
 	std::array<T, D> components;
 };
 
-template<class T, size_t D>
-Vect<T, D> operator*(T a, const Vect<T, D>& v)
+template <class T, size_t D>
+Vect<T, D> operator*(T a, const Vect<T, D> &v)
 {
-	return v*a;
+	return v * a;
 }
 
-template<class T, size_t D>
-T dot(const Vect<T, D>& a, const Vect<T, D>& b)
+template <class T, size_t D>
+T dot(const Vect<T, D> &a, const Vect<T, D> &b)
 {
 	T out = (T)0;
 	for (size_t i = 0; i < D; ++i)
@@ -218,19 +224,20 @@ T dot(const Vect<T, D>& a, const Vect<T, D>& b)
 	return out;
 }
 
-template<class T, size_t D>
-Vect<T, D> cum_trace(const Vect<T, D>& v)
+template <class T, size_t D>
+Vect<T, D> cum_trace(const Vect<T, D> &v)
 {
 	Vect<T, D> out;
 	out[0] = v[0];
-	for (size_t d = 1; d < D; ++d) {
-		out[d] = v[d] * out[d-1];
+	for (size_t d = 1; d < D; ++d)
+	{
+		out[d] = v[d] * out[d - 1];
 	}
 	return out;
 }
 
-template<class T, size_t D>
-T trace(const Vect<T, D>& v)
+template <class T, size_t D>
+T trace(const Vect<T, D> &v)
 {
 	T out = v[0];
 	for (size_t i = 1; i < D; ++i)
@@ -238,8 +245,8 @@ T trace(const Vect<T, D>& v)
 	return out;
 }
 
-template<class T, size_t D>
-std::ostream& operator<<(std::ostream& out, const Vect<T, D>& v)
+template <class T, size_t D>
+std::ostream &operator<<(std::ostream &out, const Vect<T, D> &v)
 {
 	out << "(";
 	for (int i = 0; i < D - 1; ++i)

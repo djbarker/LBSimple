@@ -2,8 +2,8 @@
 
 // compile time config
 
-#include <include/Vect.hpp>
 #include <include/Model.hpp>
+#include <include/Vect.hpp>
 
 // select the model
 static constexpr ModelType the_model_type = ModelType::D2Q9;
