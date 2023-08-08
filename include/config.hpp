@@ -12,14 +12,8 @@ static constexpr size_t Dims = the_model::Dim;
 static constexpr size_t Q = the_model::Q;
 
 // useful typedefs
-typedef unsigned char RawType;
+typedef unsigned char RawType; // TODO: RawType -> cell_t
 
-typedef Vect<double, Dims> vect_t;
-typedef Vect<int, Dims> sub_t;
-
-// struct Domain {
-//     double dx;
-//     vect_t L;
-//     sub_t N;
-//     unique_ptr<RawType[]>& cell_type;
-// };
+typedef double scalar_t;
+typedef Vect<scalar_t, Dims> vect_t;
+typedef Vect<int, Dims> sub_t; // NOTE: int not size_t since we can have negative numbers before periodic wrapping
