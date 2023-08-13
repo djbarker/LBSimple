@@ -27,7 +27,7 @@ void get_tracers_grid(size_t num_tracers, vect_t L, double dx, vector<vect_t>& p
 }
 
 //TODO: bundle L, N, dx into a "domain" struct or something
-void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, unique_ptr<RawType[]>& cell_type, vector<vect_t>& pos) {
+void get_tracers_poisson_disk(size_t num_tracers, vect_t L, sub_t N, double dx, vector<RawType>& cell_type, vector<vect_t>& pos) {
     
 	// (Lx/(f*r)) * (Ly/(f*r)) = N  => (f*r)^2 = Lx*Ly/N  => r = sqrt(Lx*Ly/N) / f 
     double r_pois = sqrt(L[0] * L[1] / num_tracers) / 1.3;

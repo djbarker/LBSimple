@@ -15,7 +15,7 @@
 using namespace std;
 
 
-Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const unique_ptr<Vect<double, 2>[]>& v)
+Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const vector<Vect<double, 2>>& v)
 {
 	Vect<double, 3> curl;
 	curl[2] = v[sub2idx(periodic(sub + Vect<int, 2>{1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{-1, 0}, N), N)][1]
@@ -25,7 +25,7 @@ Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, cons
 	return curl;
 }
 
-Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const unique_ptr<Vect<double, 3>[]>& v)
+Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const vector<Vect<double, 3>>& v)
 {
 	Vect<double, 3> curl;
 	curl[2] = v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][1]
