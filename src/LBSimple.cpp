@@ -1,6 +1,7 @@
 #include <array>
 #include <ctime>
 #include <cmath>
+#include <vector>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -15,6 +16,7 @@
 
 #include "config.hpp"
 #include "utils.hpp"
+#include "tracers.hpp"
 #include "vtk.hpp"
 
 using namespace std;
@@ -201,56 +203,29 @@ int run_main(int argc, char* argv[])
 
 	// initialize tracers
 	int num_tracers = 5E4;
-	auto pos = make_unique<vect_t[]>(num_tracers);
-	auto vel = make_unique<vect_t[]>(num_tracers);
-	auto ids = make_unique<double[]>(num_tracers);
-	auto colour = make_unique<double[]>(num_tracers);
-	auto pos_init = make_unique<vect_t[]>(num_tracers);
-
-	array<uniform_real_distribution<double>, Dims> dist;
-	for (int d = 0; d < Dims; ++d)
-		dist[d] = uniform_real_distribution<double>(0, L[d] + dx);
+	auto pos = vector<vect_t>();
+	auto vel = vector<vect_t>();
+	auto ids = vector<double>();
+	auto colour = vector<double>();
+	auto pos_init = vector<vect_t>();
 
 	bool random = true;
 
-	for (int i = 0; i < num_tracers; ++i)
-	{
-		if (random)
-		{
-			bool valid = false;
-			while (!valid)
-			{
-				for (int d = 0; d < Dims; ++d)
-					pos[i][d] = dist[d](rng);
+	if (random) {
+		get_tracers_poisson_disk(num_tracers, L, N, dx, cell_type, pos);
+	} else {
+		get_tracers_grid(num_tracers, L, dx, pos);
+	}	
 
-				valid = cell_type[sub2idx((pos[i] / dx).as<int>(), N)] == Fluid;
-			}
-		}
-		else
-		{
-			if (Dims == 2)
-			{
-				int M = (int)sqrt(num_tracers*(L[0] / L[1]));
-				double dx_ = L[0] / M;
-				pos[i][0] = (i - (i / M)*M) * dx_;
-				pos[i][1] = (i / M) * dx_;
-			}
-			else if (Dims == 3)
-			{
-				// TODO: implement
-			}
-
-		}
-
-		int idx = sub2idx((pos[i] / dx).as<int>(), N);
-
-		for (int d = 0; d < Dims; ++d) {
-			vel[i] = v[idx];
-			pos_init[i][d] = pos[i][d];
-		}
-
-		ids[i] = i;
-		colour[i] = idx;
+	num_tracers = pos.size();
+	int i = 0;
+	for (vect_t x : pos) {
+		int idx = sub2idx((x / dx).as<int>(), N);
+		vel.push_back(v[idx]);
+		pos_init.push_back(x);
+		ids.push_back(i);
+		colour.push_back(idx);
+		i++;
 	}
 
 	cout << "Done." << endl;
@@ -292,14 +267,11 @@ int run_main(int argc, char* argv[])
 		// write out data files
 		if (iteration % fact == 0)
 		{
-			
 			if (output_grid) {
 				stringstream fname;
 				fname << "./out/output_" << setw(6) << setfill('0') << iteration / fact << ".vti";
 				write_grid(fname.str(), dx, N, cell_type, v, rho);
 			}
-
-			
 
 			if (output_tracers) {
 				stringstream fname;

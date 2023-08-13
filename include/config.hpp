@@ -16,3 +16,10 @@ typedef unsigned char RawType;
 
 typedef Vect<double, Dims> vect_t;
 typedef Vect<int, Dims> sub_t;
+
+// struct Domain {
+//     double dx;
+//     vect_t L;
+//     sub_t N;
+//     unique_ptr<RawType[]>& cell_type;
+// };

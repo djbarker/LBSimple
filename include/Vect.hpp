@@ -122,6 +122,20 @@ public:
 		return out;
 	}
 
+	Vect<T, D> operator* (const Vect<T, D>& v) const {
+		Vect<T, D> out;
+		for (size_t i = 0; i < D; ++i)
+			out.components[i] = components[i] * v.components[i];
+		return out;
+	}
+
+	Vect<T, D> operator/ (const Vect<T, D>& v) const {
+		Vect<T, D> out;
+		for (size_t i = 0; i < D; ++i)
+			out.components[i] = components[i] / v.components[i];
+		return out;
+	}
+
 	Vect<T, D>& operator+=(const Vect<T, D>& v)
 	{
 		for (size_t i = 0; i < D; ++i)
