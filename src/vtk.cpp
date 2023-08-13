@@ -124,7 +124,7 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	}
 }
 
-void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect_t& vel, grid_double_t& ids) {
+void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect_t& vel, grid_double_t& ids, grid_vect_t& pos_init, grid_double_t& colour) {
 
 	vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
 
@@ -141,6 +141,16 @@ void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect
 	id_arr->SetNumberOfComponents(1);
 	id_arr->SetNumberOfTuples(num_tracers);
 
+	vtkSmartPointer<vtkDoubleArray> pos_init_arr = vtkSmartPointer<vtkDoubleArray>::New();
+	pos_init_arr->SetName("InitialPos");
+	pos_init_arr->SetNumberOfComponents(3);
+	pos_init_arr->SetNumberOfTuples(num_tracers);
+
+	vtkSmartPointer<vtkDoubleArray> colour_arr = vtkSmartPointer<vtkDoubleArray>::New();
+	colour_arr->SetName("Colour");
+	colour_arr->SetNumberOfComponents(1);
+	colour_arr->SetNumberOfTuples(num_tracers);
+
 	for (int i = 0; i < num_tracers; ++i)
 	{
 		if (Dims == 2)
@@ -155,6 +165,8 @@ void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect
 		}
 		
 		id_arr->SetTuple1(i, ids[i]);
+		pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], pos_init[i][2]);
+		colour_arr->SetTuple1(i, colour[i]);
 		vtkIdType id[1] = { i };
 		vertices->InsertNextCell(1, id);
 	}
@@ -165,6 +177,8 @@ void write_tracers(string fname, size_t num_tracers, grid_vect_t& pos, grid_vect
 	polydata->SetVerts(vertices);
 	polydata->GetPointData()->AddArray(vel_arr);
 	polydata->GetPointData()->AddArray(id_arr);
+	polydata->GetPointData()->AddArray(pos_init_arr);
+	polydata->GetPointData()->AddArray(colour_arr);
 
 	vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
 	writer->SetFileName(fname.c_str());

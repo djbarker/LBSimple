@@ -134,7 +134,6 @@ int run_main(int argc, char* argv[])
 	auto feq = make_unique<Vect<double, Q>[]>(trace(N));
 	auto v = make_unique<vect_t[]>(trace(N));
 	auto rho = make_unique<double[]>(trace(N));
-	auto id = make_unique<double[]>(trace(N));
 
 
 	mt19937_64 rng(42);
@@ -194,7 +193,6 @@ int run_main(int argc, char* argv[])
 
 		v[idx] = v_;
 		rho[idx] = rho_;
-		id[idx] = idx;
 	}
 
 	cout << "Done." << endl;
@@ -205,11 +203,13 @@ int run_main(int argc, char* argv[])
 	int num_tracers = 5E4;
 	auto pos = make_unique<vect_t[]>(num_tracers);
 	auto vel = make_unique<vect_t[]>(num_tracers);
-	auto ids = make_unique<int[]>(num_tracers);
+	auto ids = make_unique<double[]>(num_tracers);
+	auto colour = make_unique<double[]>(num_tracers);
+	auto pos_init = make_unique<vect_t[]>(num_tracers);
 
 	array<uniform_real_distribution<double>, Dims> dist;
 	for (int d = 0; d < Dims; ++d)
-		dist[d] = uniform_real_distribution<double>(0, L[d]);
+		dist[d] = uniform_real_distribution<double>(0, L[d] + dx);
 
 	bool random = true;
 
@@ -244,16 +244,21 @@ int run_main(int argc, char* argv[])
 
 		int idx = sub2idx((pos[i] / dx).as<int>(), N);
 
-		for (int d = 0; d < Dims; ++d)
+		for (int d = 0; d < Dims; ++d) {
 			vel[i] = v[idx];
+			pos_init[i][d] = pos[i][d];
+		}
 
-		ids[i] = idx;
+		ids[i] = i;
+		colour[i] = idx;
 	}
 
 	cout << "Done." << endl;
 
+	cout << "Dims: " << Dims << endl;
+
 	auto interp_vel = [&](vect_t x, vect_t& v_){
-#if Dims==2
+// #if Dims==2
 			auto idx = (x / dx).as<int>();
 			int idx00 = sub2idx(idx, N);
 			int idx10 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), idx[1] }, N);
@@ -261,19 +266,19 @@ int run_main(int argc, char* argv[])
 			int idx11 = sub2idx(sub_t{ periodic(idx[0] + 1, N[0]), periodic(idx[1] + 1, N[1]) }, N);
 
 			v_ = bilinear_interp(x, (idx).as<double>()*dx, dx, v[idx00], v[idx10], v[idx01], v[idx11]);
-#elif Dims==3
-			auto idx = (x / dx).as<int>();
-			int idx000 = sub2idx(idx, N);
-			int idx100 = sub2idx(periodic(idx + sub_t{ 1, 0, 0 }, N), N);
-			int idx010 = sub2idx(periodic(idx + sub_t{ 0, 1, 0 }, N), N);
-			int idx001 = sub2idx(periodic(idx + sub_t{ 0, 0, 1 }, N), N);
-			int idx110 = sub2idx(periodic(idx + sub_t{ 1, 1, 0 }, N), N);
-			int idx101 = sub2idx(periodic(idx + sub_t{ 1, 0, 1 }, N), N);
-			int idx011 = sub2idx(periodic(idx + sub_t{ 0, 1, 1 }, N), N);
-			int idx111 = sub2idx(periodic(idx + sub_t{ 1, 1, 1 }, N), N);
+// #elif Dims==3
+// 			auto idx = (x / dx).as<int>();
+// 			int idx000 = sub2idx(idx, N);
+// 			int idx100 = sub2idx(periodic(idx + sub_t{ 1, 0, 0 }, N), N);
+// 			int idx010 = sub2idx(periodic(idx + sub_t{ 0, 1, 0 }, N), N);
+// 			int idx001 = sub2idx(periodic(idx + sub_t{ 0, 0, 1 }, N), N);
+// 			int idx110 = sub2idx(periodic(idx + sub_t{ 1, 1, 0 }, N), N);
+// 			int idx101 = sub2idx(periodic(idx + sub_t{ 1, 0, 1 }, N), N);
+// 			int idx011 = sub2idx(periodic(idx + sub_t{ 0, 1, 1 }, N), N);
+// 			int idx111 = sub2idx(periodic(idx + sub_t{ 1, 1, 1 }, N), N);
 
-			v_ = trilinear_interp(x, (idx).as<double>()*dx, dx, v[idx000], v[idx100], v[idx010], v[idx001], v[idx110], v[idx101], v[idx011], v[idx111]);
-#endif
+// 			v_ = trilinear_interp(x, (idx).as<double>()*dx, dx, v[idx000], v[idx100], v[idx010], v[idx001], v[idx110], v[idx101], v[idx011], v[idx111]);
+// #endif
 	};
 
 	cout << "Running simulation..." << endl;
@@ -299,7 +304,7 @@ int run_main(int argc, char* argv[])
 			if (output_tracers) {
 				stringstream fname;
 				fname << "./out/tracer_" << setw(6) << setfill('0') << iteration / fact << ".vtp";
-				write_tracers(fname.str(), num_tracers, pos, vel, id);
+				write_tracers(fname.str(), num_tracers, pos, vel, ids, pos_init, colour);
 			}
 		}
 
