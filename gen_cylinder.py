@@ -5,8 +5,8 @@ Generate a simple domain with a cylinder and two walls.
 #%%
 import numpy as np
 
-Nx = 800
-Ny = 400
+Nx = 400
+Ny = 200
 
 R = 0.05 * Ny
 Cx = 0.1 * Nx 
@@ -18,12 +18,18 @@ dom[0, :] = 3
 dom[-1, :] = 3
 
 # wall boundaries
-dom[:, 0] = 0
-dom[:, -1] = 0
+dom[:, 0] = 3
+dom[:, -1] = 3
 
 for i in range(Nx):
 	for j in range(Ny):
 		if ((j-Ny//2)**2 + (i-Cx)**2) <= R**2:
+			dom[i, j] = 0
+
+		if ((j-Ny//2 - Ny//5)**2 + (i-0.2 * Nx)**2) <= R**2:
+			dom[i, j] = 0
+			
+		if ((j-Ny//2 + Ny//5)**2 + (i-0.2 * Nx)**2) <= R**2:
 			dom[i, j] = 0
 
 dom = dom.T
