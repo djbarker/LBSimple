@@ -19,6 +19,7 @@ int sub2idx<3>(const Vect<int, 3>& sub, const Vect<int, 3>& extent)
 }
 
 int sub2idx_3d(int subx, int suby, int subz, const Vect<int, 3>& extent) {
+	// TODO: need to update this to use cum_trace.
 	return subx + suby * extent[1] + subz * extent[0] * extent[1];
 }
 
