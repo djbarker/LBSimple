@@ -1,7 +1,17 @@
 .vscode/
 build/
+out/
+*.vtp
+*.vti
 *.old
 *.bak
 *.raw
 *.o
 include/json.hpp
+CMakeCache.txt
+cmake_install.cmake
+lbsimple
+vtk_output.txt
+*.data
+CMakeFiles/
+Makefile
