@@ -5,24 +5,33 @@
 	"dt_max": 6,
 	"mu": 0.001,
 	"rho0": 1000.0,
-	"gravity": [0.0, 0.0],
-	"perturbation": 0, 
-
+	"gravity": [
+		0.0,
+		0.0
+	],
+	"perturbation": 0,
 	"domain": {
-		"file": "./cylinder.data",
-		"size": [400, 200],
-		"periodic": [false, false]
+		"file": "../cylinder.data",
+		"size": [
+			400,
+			200
+		],
+		"periodic": [
+			false,
+			false
+		]
 	},
-	
 	"boundaries": {
 		"3": {
 			"type": "velocity",
-			"vel": [0.05, 0.0]
+			"vel": [
+				0.05,
+				0.0
+			]
 		}
 	},
-
 	"output": {
 		"grid": true,
-		"tracers": false
+		"tracers": true
 	}
 }

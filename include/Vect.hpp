@@ -4,6 +4,8 @@
 #include <cassert>
 #include <initializer_list>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 /**
  * Thin wrapper for std::array with vector addition, etc.
@@ -51,6 +53,18 @@ public:
 
 	~Vect()
 	{
+	}
+
+	std::string to_string() const
+	{
+		std::stringstream sstr;
+		sstr << "(" << components[0];
+		for (size_t d = 1; d < D; ++d)
+		{
+			sstr << ", " << components[d];
+		}
+		sstr << ")";
+		return sstr.str();
 	}
 
 	Vect<T, D> &operator=(const Vect<T, D> &v)
@@ -205,7 +219,7 @@ public:
 		return out;
 	}
 
-private:
+	// private:
 	std::array<T, D> components;
 };
 

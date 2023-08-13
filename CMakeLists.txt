@@ -29,7 +29,6 @@ include_directories(
 	)
 
 
-add_executable(lbsimple ${LBM_SOURCES})
 
 find_package(VTK 6.1 REQUIRED NO_MODULE)
 if(VTK_FOUND)
@@ -40,8 +39,19 @@ include(${VTK_USE_FILE})
 # find_package( Boost 1.54 COMPONENTS program_options REQUIRED )
 # include_directories(${Boost_INCLUDE_DIR})
 
-target_link_libraries(lbsimple ${VTK_LIBRARIES}) # ${Boost_LIBRARIES})
+# add_executable(lbsimple ${LBM_SOURCES})
+# target_link_libraries(lbsimple ${VTK_LIBRARIES} ${pybind11_LIBRARIES}) # ${Boost_LIBRARIES})
+# target_link_libraries(lbsimple fmt::fmt-header-only)
 
+add_subdirectory("deps/fmt")
+include_directories(${fmt_INCLUDE_DIRS})
+include_directories("deps/fmt/include") 
+
+find_package(pybind11 CONFIG)
+include_directories(${pybind11_INCLUDE_DIRS})
+pybind11_add_module(lbsimple ${LBM_SOURCES})
+
+target_link_libraries(lbsimple PRIVATE ${VTK_LIBRARIES})
 
 # get_cmake_property(_variableNames VARIABLES)
 # foreach (_variableName ${_variableNames})

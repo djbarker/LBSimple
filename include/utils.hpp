@@ -20,6 +20,7 @@ enum CellType
 	Fluid = 0,
 	Wall = 1,
 	Empty = 2,
+	Velocity = 3,
 };
 
 // compile time factorial
