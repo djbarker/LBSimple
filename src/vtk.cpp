@@ -9,41 +9,35 @@
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkZLibDataCompressor.h>
 
-#include <include/vtk.hpp>
 #include <include/utils.hpp>
+#include <include/vtk.hpp>
 
 using namespace std;
 
-
-Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const vector<Vect<double, 2>>& v)
+Vect<double, 3> calculate_curl(Vect<int, 2> sub, Vect<int, 2> N, double dx, const vector<Vect<double, 2>> &v)
 {
 	Vect<double, 3> curl;
-	curl[2] = v[sub2idx(periodic(sub + Vect<int, 2>{1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{-1, 0}, N), N)][1]
-		    - v[sub2idx(periodic(sub + Vect<int, 2>{0, 1}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 2>{0, -1}, N), N)][0];
+	curl[2] = v[sub2idx(periodic(sub + Vect<int, 2>{1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{-1, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 2>{0, 1}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 2>{0, -1}, N), N)][0];
 	curl[2] /= 2 * dx;
 
 	return curl;
 }
 
-Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const vector<Vect<double, 3>>& v)
+Vect<double, 3> calculate_curl(Vect<int, 3> sub, Vect<int, 3> N, double dx, const vector<Vect<double, 3>> &v)
 {
 	Vect<double, 3> curl;
-	curl[2] = v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][1]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][0];
+	curl[2] = v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][1] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][0] + v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][0];
 
-	curl[1] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][0] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][0]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][2] + v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][2];
+	curl[1] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][0] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][0] - v[sub2idx(periodic(sub + Vect<int, 3>{1, 0, 0}, N), N)][2] + v[sub2idx(periodic(sub + Vect<int, 3>{-1, 0, 0}, N), N)][2];
 
-	curl[0] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][2] - v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][2]
-		    - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][1] + v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][1];
+	curl[0] = v[sub2idx(periodic(sub + Vect<int, 3>{0, 1, 0}, N), N)][2] - v[sub2idx(periodic(sub + Vect<int, 3>{0, -1, 0}, N), N)][2] - v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, 1}, N), N)][1] + v[sub2idx(periodic(sub + Vect<int, 3>{0, 0, -1}, N), N)][1];
 	curl /= 2 * dx;
 
 	return curl;
 }
 
-
-
-void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_vect_t& v, grid_double_t& rho) {
+void write_grid(string fname, double dx, sub_t N, grid_cell_t &cell_type, grid_vect_t &v, grid_double_t &rho)
+{
 
 	vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
 
@@ -52,14 +46,14 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	if (Dims == 2)
 	{
 		data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, 0);
-		data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), 0);
+		data->SetSpacing(dx * (N[0]) / (N[0] - 1), dx * (N[1]) / (N[1] - 1), 0);
 	}
 	else if (Dims == 3)
 	{
 		data->SetExtent(0, N[0] - 1, 0, N[1] - 1, 0, N[2] - 1);
-		data->SetSpacing(dx*(N[0]) / (N[0] - 1), dx*(N[1]) / (N[1] - 1), dx*(N[2])/(N[2]-1));
+		data->SetSpacing(dx * (N[0]) / (N[0] - 1), dx * (N[1]) / (N[1] - 1), dx * (N[2]) / (N[2] - 1));
 	}
-	
+
 	data->SetOrigin(0, 0, 0);
 
 	vtkSmartPointer<vtkDoubleArray> rho_arr = vtkSmartPointer<vtkDoubleArray>::New();
@@ -74,7 +68,7 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 
 	vtkSmartPointer<vtkDoubleArray> curl_arr = vtkSmartPointer<vtkDoubleArray>::New();
 	curl_arr->SetName("Vorticity");
-	if (Dims==2)
+	if (Dims == 2)
 		curl_arr->SetNumberOfComponents(1);
 	else
 		curl_arr->SetNumberOfComponents(3);
@@ -85,7 +79,7 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	type_arr->SetNumberOfComponents(1);
 	type_arr->SetNumberOfTuples(trace(N));
 
-	vtkPointData* pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
+	vtkPointData *pdata = data->GetPointData(); // belongs to data => no smart pointer necessary
 	pdata->AddArray(vel_arr);
 	pdata->AddArray(rho_arr);
 	pdata->AddArray(curl_arr);
@@ -96,7 +90,7 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	{
 		int idx = sub2idx(sub, N);
 		Vect<double, 3> curl = calculate_curl(sub, N, dx, v);
-		
+
 		type_arr->SetTuple1(idx, cell_type[idx]);
 		rho_arr->SetTuple1(idx, rho[idx]);
 		if (Dims == 2)
@@ -124,7 +118,8 @@ void write_grid(string fname, double dx, sub_t N,  grid_cell_t& cell_type, grid_
 	}
 }
 
-void write_tracers(string fname, size_t num_tracers, vector<vect_t>& pos, vector<vect_t>& vel, vector<double>& ids, vector<vect_t>& pos_init, vector<double>& colour) {
+void write_tracers(string fname, size_t num_tracers, vector<vect_t> &pos, vector<vect_t> &vel, vector<double> &ids, vector<vect_t> &pos_init, vector<double> &colour)
+{
 
 	vtkSmartPointer<vtkZLibDataCompressor> compressor = vtkSmartPointer<vtkZLibDataCompressor>::New();
 
@@ -156,7 +151,7 @@ void write_tracers(string fname, size_t num_tracers, vector<vect_t>& pos, vector
 		if (Dims == 2)
 		{
 			points->InsertNextPoint(pos[i][0], pos[i][1], 0.0);
-			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);		
+			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], 0.0);
 			pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], 0.0);
 		}
 		else
@@ -165,10 +160,10 @@ void write_tracers(string fname, size_t num_tracers, vector<vect_t>& pos, vector
 			vel_arr->SetTuple3(i, vel[i][0], vel[i][1], vel[i][2]);
 			pos_init_arr->SetTuple3(i, pos_init[i][0], pos_init[i][1], pos_init[i][2]);
 		}
-		
+
 		id_arr->SetTuple1(i, ids[i]);
 		colour_arr->SetTuple1(i, colour[i]);
-		vtkIdType id[1] = { i };
+		vtkIdType id[1] = {i};
 		vertices->InsertNextCell(1, id);
 	}
 

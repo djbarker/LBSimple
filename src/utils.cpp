@@ -2,29 +2,31 @@
 
 using namespace std;
 
-template<>
-int sub2idx<2>(const Vect<int, 2>& sub, const Vect<int, 2>& extent)
+template <>
+int sub2idx<2>(const Vect<int, 2> &sub, const Vect<int, 2> &extent)
 {
 	return sub2idx_2d(sub[0], sub[1], extent);
 }
 
-int sub2idx_2d(int subx, int suby, const Vect<int, 2>& extent) {
-	return subx + suby*extent[0];
+int sub2idx_2d(int subx, int suby, const Vect<int, 2> &extent)
+{
+	return subx + suby * extent[0];
 }
 
-template<>
-int sub2idx<3>(const Vect<int, 3>& sub, const Vect<int, 3>& extent)
+template <>
+int sub2idx<3>(const Vect<int, 3> &sub, const Vect<int, 3> &extent)
 {
 	return sub2idx_3d(sub[0], sub[1], sub[2], extent);
 }
 
-int sub2idx_3d(int subx, int suby, int subz, const Vect<int, 3>& extent) {
+int sub2idx_3d(int subx, int suby, int subz, const Vect<int, 3> &extent)
+{
 	// TODO: need to update this to use cum_trace.
 	return subx + suby * extent[1] + subz * extent[0] * extent[1];
 }
 
-template<>
-Vect<int, 2> idx2sub<2>(size_t idx, const Vect<int, 2>& extent)
+template <>
+Vect<int, 2> idx2sub<2>(size_t idx, const Vect<int, 2> &extent)
 {
 	Vect<int, 2> out;
 	out[0] = idx % extent[0];
@@ -32,8 +34,8 @@ Vect<int, 2> idx2sub<2>(size_t idx, const Vect<int, 2>& extent)
 	return out;
 }
 
-template<>
-Vect<int, 3> idx2sub<3>(size_t idx, const Vect<int, 3>& extent)
+template <>
+Vect<int, 3> idx2sub<3>(size_t idx, const Vect<int, 3> &extent)
 {
 	Vect<int, 3> out;
 	out[0] = idx % extent[0];
@@ -42,27 +44,29 @@ Vect<int, 3> idx2sub<3>(size_t idx, const Vect<int, 3>& extent)
 	return out;
 }
 
-template<>
+template <>
 Vect<int, 2> calc_num_domains<2>(size_t nproc)
 {
 	int root = 1;
 	for (int i = 2; i <= sqrt(nproc); ++i)
-	if (nproc%i == 0) root = i;
+		if (nproc % i == 0)
+			root = i;
 
 	return Vect<int, 2>{root, (int)nproc / root};
 }
 
-template<>
+template <>
 Vect<int, 3> calc_num_domains<3>(size_t nproc)
 {
 	int root1 = 1;
 	for (int i = 2; i <= pow(nproc, 1. / 3.); ++i)
-	if (nproc%i == 0) root1 = i;
+		if (nproc % i == 0)
+			root1 = i;
 
 	int root2 = 1;
 	for (int i = 2; i <= sqrt(nproc / root1); ++i)
-	if ((nproc / root1) % i == 0) root2 = i;
+		if ((nproc / root1) % i == 0)
+			root2 = i;
 
-	return Vect<int, 3>{root1, root2, (int)nproc / (root1*root2)};
+	return Vect<int, 3>{root1, root2, (int)nproc / (root1 * root2)};
 }
-
