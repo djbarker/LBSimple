@@ -22,10 +22,9 @@
 using namespace std;
 
 template<class Model>
-double get_feq(const vect_t& v, double v_dot_v_, double rho, double c, int q)
+double get_feq(const vect_t& v, double v_dot_v, double rho, double c, int q)
 {
 	double v_dot_e = dot((Model::Es[q]).template as<double>(), v);
-	double v_dot_v = dot(v, v);  // DEBUG! TODO: remove this
 	double s = (3. / c)*(v_dot_e)+(9. / 2.)*(v_dot_e*v_dot_e / (c*c)) - (3. / 2.)*v_dot_v / (c*c);
 	return Model::Ws[q] * rho*(1.0 + s);
 }
@@ -288,9 +287,11 @@ int run_main(int argc, char* argv[])
 			}
 		}
 
-		auto now = std::clock();
-		cout << iteration << " (" << (int)(iteration / fact) << "): " << "<time/itr> = " << (int)((now-then)*1000.0 / (CLOCKS_PER_SEC * (iteration+1.0))) << " ms\tt = " << iteration * dt << " s\r";
-		cout.flush();
+		if (iteration % 10 == 0) {
+			auto now = std::clock();
+			cout << iteration << " (" << (int)(iteration / fact) << "): " << "<time/itr> = " << (int)((now-then)*1000.0 / (CLOCKS_PER_SEC * (iteration+1.0))) << " ms\tt = " << iteration * dt << " s\r";
+			cout.flush();
+		}
 
 		// stream
 		int idx = 0; // raster goes in the same direction as sub2idx
@@ -307,18 +308,10 @@ int run_main(int argc, char* argv[])
 				{
 					ftmp[neighbour_idx][q] = f[idx][q];
 				}
-			}
 
-			if (type == Wall)
-			{
-				// # pragma GCC unroll 20
-				for (int q = 0; q < Q; ++q) // TODO: combine this with loop over q above
+				else if (type == Wall)
 				{
-					int neighbour_idx = sub2idx(periodic(sub + the_model::Es[q], N), M);
-					if (cell_type[neighbour_idx] != Fluid)
-					{
-						ftmp[idx][the_model::Qneg[q]] = f[idx][q];
-					}
+					ftmp[idx][the_model::Qneg[q]] = f[idx][q];
 				}
 			}
 		}
