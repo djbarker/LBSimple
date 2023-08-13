@@ -96,6 +96,10 @@ Vect<int, D> raster_end(const Vect<int, D>& extent)
 template<size_t D> int sub2idx(const Vect<int, D>& sub, const Vect<int, D>& extent);
 template<size_t D> Vect<int, D> idx2sub(size_t idx, const Vect<int, D>& extent);
 
+// In situations where we know if we have 2 or 3 dims we can use these to avoid constructing the sub_t (although maybe that doesn't help)
+int sub2idx_2d(int subx, int suby, const Vect<int, 2>& extent);
+int sub2idx_3d(int subx, int suby, int subz, const Vect<int, 3>& extent);
+
 template<size_t D> Vect<int, D> calc_num_domains(size_t procs);
 
 template<class T>
